@@ -154,18 +154,21 @@ extern struct ConfigOptions* configs; //Hash map of multiple configs
 #else
 extern struct ConfigOptions* singleConfig; //Only one config
 #define generateDefault() generateDefault_(singleConfig)
-#ifdef AUTO_DEFAULT
+#ifdef AUTO_GENERATE
 #define initConfig(file, count, options) do{                                \
-initConfig_(&singleConfig, file, count, options)                            \
-FILE* fp = fopen(file, "r");                                                \
-if(!fp) generateDefault();                                                  \
-else fclose(fp);                                                            \
+    initConfig_(&singleConfig, file, count, options);                       \
+    FILE* fp = fopen(file, "r");                                            \
+    if(!fp) generateDefault();                                              \
+    else fclose(fp);                                                        \
 }while(0)
 #else
 #define initConfig(file, count, options) initConfig_(&singleConfig, file, count, options)
 #endif
 #define readConfig() readConfig_(singleConfig)
-#define get(optName) get_(singleConfig, optName)
+#define get(optName, out) do{                                               \
+    struct Option* o = get_(singleConfig, optName);                         \
+    SET_FROM_OPTION(out, o);                                                \
+}while(0)
 #define cleanConfigs() cleanConfig_(singleConfig)
 #endif
 

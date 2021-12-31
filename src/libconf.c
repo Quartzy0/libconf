@@ -135,7 +135,7 @@ void readConfig_(struct ConfigOptions* config){
             switch (optOut->type) {
                 case TEXT:
                 {
-                    if (optOut->v_s) free(optOut->v_s);
+                    if (optOut->v_s != optOut->dv_s && optOut->v_s) free(optOut->v_s);
                     if (*optStr=='"' && *(optStr+1)=='"' && *(optStr+2)=='"'){
                         if (optStrLen>3 && *(optStr+optStrLen-1)=='"' && *(optStr+optStrLen-2)=='"' && *(optStr+optStrLen-3)=='"'){
                             *(optStr+optStrLen-3) = '\0';
