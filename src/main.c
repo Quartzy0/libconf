@@ -1,4 +1,5 @@
 #define MULTI_CONFIG
+#define AUTO_GENERATE
 #include "libconf.h"
 #include <time.h>
 
@@ -44,9 +45,9 @@ int main(){
         }
     }*/
 
-    struct OptionOutline options[3] = { {"joe", NUMBER, "Hello world!"},
-                                        {"mama", TEXT, "This is a comment too!"},
-                                        {"haha", BOOL, "Funny bool test"}};
+    struct OptionOutline options[3] = { {"joe", NUMBER, "Hello world!\nyoe", .dv_l=12},
+                                        {"mama", TEXT, "This is a comment too!", .dv_s="Wooooooo!!!\nNow this is some serious multi line creip"},
+                                        {"haha", BOOL, "Funny bool test", .dv_b=true}};
 #ifndef MULTI_CONFIG
     initConfig("test.conf", 2, options);
 
@@ -58,12 +59,10 @@ int main(){
     cleanConfigs();
 #else
     clock_t timeStart = clock();
-    initConfig("conf1", "test.conf", 3, options);
-    initConfig("conf2", "test_conf.conf", 3, options);
+    initConfig("conf1", "debug/test.conf", 3, options);
     clock_t timeInitConfig = clock();
 
     readConfig("conf1");
-    readConfig("conf2");
     clock_t timeReadConfig = clock();
 
     int joe = 0;
@@ -71,7 +70,7 @@ int main(){
     printf("joe is: %d\n", joe);
 
     char* mama = NULL;
-    get("conf2", "mama", &mama);
+    get("conf1", "mama", &mama);
     printf("mama is: %s\n", mama);
 
     bool haha = NULL;

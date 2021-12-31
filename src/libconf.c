@@ -14,6 +14,11 @@ size_t trim(const char* in, char** out){
     if(!in) return 0;
     const char* begin = in;
     const char* end = in + strlen(in)-1;
+    if (begin==end) {
+        if (isspace(*in)) return 0;
+        *out = strdup(in);
+        return strlen(in);
+    }
 
     while(isspace(*begin))
         begin++;
@@ -33,7 +38,6 @@ void initConfig_(struct ConfigOptions** configIn, char* file, size_t count, stru
         option->comment = strdup(options[i].comment);
         switch (options[i].type) {
             case TEXT:
-            case TEXT_BLOCK:
             {
                 if (options[i].dv_s){
                     option->dv_s = strdup(options[i].dv_s);
@@ -127,12 +131,53 @@ void readConfig_(struct ConfigOptions* config){
             fprintf(stderr, "Unrecognized option '%s' found: %s:%zu\n", optionName, config->file, lineCount);
         }else{
             char* optStr = NULL;
-            trim(strValueUntrimmed, &optStr);
+            size_t optStrLen = trim(strValueUntrimmed, &optStr);
             switch (optOut->type) {
                 case TEXT:
                 {
                     if (optOut->v_s) free(optOut->v_s);
-                    optOut->v_s = strdup(optStr);
+                    if (*optStr=='"' && *(optStr+1)=='"' && *(optStr+2)=='"'){
+                        if (optStrLen>3 && *(optStr+optStrLen-1)=='"' && *(optStr+optStrLen-2)=='"' && *(optStr+optStrLen-3)=='"'){
+                            *(optStr+optStrLen-3) = '\0';
+                            optOut->v_s = strndup(optStr+3, optStrLen-3);
+                            break;
+                        }
+                        char* buf = NULL;
+                        if(!(buf = malloc(MULTI_LINE_BUFFER_MIN_SIZE))){
+                            fprintf(stderr, "Error while allocating space for multi-line buffer: '%s'", strerror(errno));
+                            break;
+                        }
+                        size_t bufLen = 0;
+                        if (optStrLen>3) {
+                            strcat(buf, optStr+3);
+                            bufLen = optStrLen-3;
+                            *(buf + bufLen - 1) = '\n';
+                            *(buf + bufLen) = '\0';
+                        }
+
+                        while(fgets(lineBuf, len, fp)){
+                            lineCount++;
+                            size_t lineLen = strlen(lineBuf);
+                            if (*(lineBuf+lineLen-2)=='"' && *(lineBuf+lineLen-3)=='"' && *(lineBuf+lineLen-4)=='"'){
+                                if (lineLen<=4) break;
+                                strncat(buf, lineBuf, lineLen-4);
+                                bufLen+=lineLen-4;
+                                break;
+                            }
+                            strcat(buf, lineBuf);
+                            bufLen+=lineLen;
+                        }
+                        if (*(buf + bufLen - 1)=='\n') *(buf + bufLen - 1) = '\0';
+                        optOut->v_s = strdup(buf);
+                        free(buf);
+                        break;
+                    }
+                    if ((*optStr=='"' && *(optStr + optStrLen - 1)=='"') ||
+                        (*optStr=='\'' && *(optStr + optStrLen - 1)=='\'')){
+                        *(optStr + optStrLen - 1) = '\0';
+                        optOut->v_s = strndup(optStr+1, optStrLen-2);
+                    }else
+                        optOut->v_s = strdup(optStr);
                     break;
                 }
                 case NUMBER:
@@ -215,9 +260,9 @@ void cleanConfig_(struct ConfigOptions* config){
     HASH_ITER(hh, config->options, currentOption, tmpOpt) {
         HASH_DEL(config->options, currentOption);
 
-        if(currentOption->type==TEXT || currentOption->type==TEXT_BLOCK){
+        if(currentOption->type==TEXT){
             free(currentOption->v_s);
-            free(currentOption->dv_s);
+            if (currentOption->v_s!=currentOption->dv_s) free(currentOption->dv_s); //Prevent double free in the case that the default and value are the same
         }
         free(currentOption->name);
         free(currentOption->comment);
@@ -225,4 +270,76 @@ void cleanConfig_(struct ConfigOptions* config){
     }
 
     free(config);
+}
+
+void generateDefault_(struct ConfigOptions *config) {
+    FILE* fp = fopen(config->file, "w");
+    if (!fp){
+        fprintf(stderr, "Error occurred while trying to open/create file '%s': %s", config->file, strerror(errno));
+        return;
+    }
+
+    bool nfirst = false; //Used to not insert a new line at the first line
+    size_t lineCount = 1;
+
+    struct Option* opt, *tmp;
+    HASH_ITER(hh, config->options, opt, tmp){
+        if (opt->type==TEXT && !opt->dv_s)continue;
+
+        if (nfirst){
+            fputc('\n', fp);
+            lineCount++;
+        } else
+            nfirst = true;
+
+        char* comment = opt->comment;
+        char* commentEnd = comment + strlen(comment);
+        char* commentNext = NULL;
+        while((commentNext = strchr(comment, '\n'))){
+            char buf[commentNext-comment+3];
+            snprintf(buf, commentNext-comment+3, "#%s\n", comment);
+            fputs(buf, fp);
+            comment = commentNext+1;
+            lineCount++;
+        }
+        char buf[commentEnd-comment+3];
+        snprintf(buf, commentEnd-comment+3, "#%s\n", comment);
+        fputs(buf, fp);
+        lineCount++;
+
+        lineCount++;
+        fputs(opt->name, fp);
+        fputc('=', fp);
+        switch (opt->type) {
+            case TEXT:
+            {
+                if (opt->dv_s){
+                    if (strchr(opt->dv_s, '\n')){
+                        fprintf(fp, "\"\"\"\n%s\n\"\"\"", opt->dv_s);
+                    }else{
+                        fprintf(fp, "\"%s\"", opt->dv_s);
+                    }
+                }
+                break;
+            }
+            case NUMBER:
+            {
+                fprintf(fp, "%ld", opt->dv_l);
+                break;
+            }
+            case DOUBLE:
+            {
+                fprintf(fp, "%f", opt->dv_d);
+                break;
+            }
+            case BOOL:
+            {
+                fputs(opt->dv_b ? "true" : "false", fp);
+                break;
+            }
+        }
+        fputc('\n', fp);
+    }
+
+    fclose(fp);
 }
