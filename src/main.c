@@ -1,5 +1,6 @@
 #define MULTI_CONFIG
 #include "libconf.h"
+#include <time.h>
 
 struct Config{
     char* joe;
@@ -43,8 +44,10 @@ int main(){
         }
     }*/
 
+    struct OptionOutline options[3] = { {"joe", NUMBER, "Hello world!"},
+                                        {"mama", TEXT, "This is a comment too!"},
+                                        {"haha", BOOL, "Funny bool test"}};
 #ifndef MULTI_CONFIG
-    struct OptionOutline options[2] = {{"joe", INT, "Hello world!"}, {"mama", TEXT, "This is a comment too!"}};
     initConfig("test.conf", 2, options);
 
     readConfig();
@@ -54,19 +57,34 @@ int main(){
 
     cleanConfigs();
 #else
-    struct OptionOutline options[2] = {{"joe", INT, "Hello world!"}, {"mama", TEXT, "This is a comment too!"}};
-    initConfig("conf1", "test.conf", 2, options);
-    initConfig("conf2", "test_conf.conf", 2, options);
+    clock_t timeStart = clock();
+    initConfig("conf1", "test.conf", 3, options);
+    initConfig("conf2", "test_conf.conf", 3, options);
+    clock_t timeInitConfig = clock();
 
     readConfig("conf1");
     readConfig("conf2");
+    clock_t timeReadConfig = clock();
 
-    char* joe = get("conf1", "joe");
-    printf("joe is: %s\n", joe);
+    int joe = 0;
+    get("conf1", "joe", &joe);
+    printf("joe is: %d\n", joe);
 
-    char* mama = get("conf2", "mama");
+    char* mama = NULL;
+    get("conf2", "mama", &mama);
     printf("mama is: %s\n", mama);
 
+    bool haha = NULL;
+    get("conf1", "haha", &haha);
+    printf("haha is: %s\n", haha ? "true" : "false");
+    clock_t timeGetVars = clock();
+
     cleanConfigs();
+    clock_t timeClean = clock();
+
+    printf("Init: %f ms, Read: %f ms, Get: %f ms, Clean: %f ms, Total: %f ms\n", ((double) timeInitConfig-timeStart)/CLOCKS_PER_SEC*1000,
+           ((double) timeReadConfig-timeInitConfig)/CLOCKS_PER_SEC*1000, ((double)timeGetVars-timeReadConfig)/CLOCKS_PER_SEC*1000,
+           ((double)timeClean-timeGetVars)/CLOCKS_PER_SEC*1000, ((double)timeClean-timeStart)/CLOCKS_PER_SEC*1000);
+
 #endif
 }
