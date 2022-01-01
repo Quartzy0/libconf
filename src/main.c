@@ -45,9 +45,10 @@ int main(){
         }
     }*/
 
-    struct OptionOutline options[3] = { {"joe", NUMBER, "Hello world!\nyoe", .dv_l=12},
+    struct OptionOutline options[3] = { {"joe", NUMBER, "Hello world!\nyoe", 12},
                                         {"mama", TEXT, "This is a comment too!", .dv_s="Wooooooo!!!\nNow this is some serious multi line creip"},
-                                        {"haha", BOOL, "Funny bool test", .dv_b=true}};
+                                        {"haha", BOOL, "Funny bool test", .dv_b=true}
+                                        };
 #ifndef MULTI_CONFIG
     clock_t timeStart = clock();
     initConfig("debug/test.conf", 3, options);

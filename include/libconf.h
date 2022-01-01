@@ -157,12 +157,16 @@ extern struct ConfigOptions* singleConfig; //Only one config
 #ifdef AUTO_GENERATE
 #define initConfig(file, count, options) do{                                \
     initConfig_(&singleConfig, file, count, options);                       \
+    singleConfig->name = NULL;\
     FILE* fp = fopen(file, "r");                                            \
     if(!fp) generateDefault();                                              \
     else fclose(fp);                                                        \
 }while(0)
 #else
-#define initConfig(file, count, options) initConfig_(&singleConfig, file, count, options)
+#define initConfig(file, count, options) do{                                \
+    initConfig_(&singleConfig, file, count, options);                       \
+    singleConfig->name = NULL;                                              \
+}while(0)
 #endif
 #define readConfig() readConfig_(singleConfig)
 #define get(optName, out) do{                                               \

@@ -32,6 +32,7 @@ size_t trim(const char* in, char** out){
 void initConfig_(struct ConfigOptions** configIn, char* file, size_t count, struct OptionOutline* options){
     (*configIn) = malloc(sizeof(struct ConfigOptions));
     (*configIn)->file = strdup(file);
+    (*configIn)->options = NULL;
     for (int i = 0; i < count; ++i){
         struct Option* option = malloc(sizeof(struct Option));
         option->name = strdup(options[i].name);
@@ -88,7 +89,7 @@ void readConfig_(struct ConfigOptions* config){
         lineCount++;
         char* lineBufTrim = NULL;
         if(!trim(lineBuf, &lineBufTrim)){ //trim returns length of trimmed string. If the new string is 0, continue to the next line
-            free(lineBufTrim);
+            if (lineBufTrim) free(lineBufTrim);
             continue;
         }
 
@@ -147,7 +148,9 @@ void readConfig_(struct ConfigOptions* config){
                             fprintf(stderr, "Error while allocating space for multi-line buffer: '%s'", strerror(errno));
                             break;
                         }
+                        buf[0] = '\0';
                         size_t bufLen = 0;
+                        size_t bufMaxLen = MULTI_LINE_BUFFER_MIN_SIZE;
                         if (optStrLen>3) {
                             strcat(buf, optStr+3);
                             bufLen = optStrLen-3;
@@ -158,6 +161,19 @@ void readConfig_(struct ConfigOptions* config){
                         while(fgets(lineBuf, len, fp)){
                             lineCount++;
                             size_t lineLen = strlen(lineBuf);
+                            if (bufLen+lineLen>=bufMaxLen){
+                                char* newBuf = realloc(buf, bufMaxLen+MULTI_LINE_BUFFER_MIN_SIZE);
+                                if (!newBuf){
+                                    fprintf(stderr, "Error while reallocating memory for multi-line buffer: '%s'",
+                                            strerror(errno));
+                                    if (*(buf + bufLen - 1)=='\n') *(buf + bufLen - 1) = '\0';
+                                    optOut->v_s = strdup(buf);
+                                    free(buf);
+                                    goto endSwitch;
+                                }
+                                bufMaxLen+=MULTI_LINE_BUFFER_MIN_SIZE;
+                                buf = newBuf;
+                            }
                             if (*(lineBuf+lineLen-2)=='"' && *(lineBuf+lineLen-3)=='"' && *(lineBuf+lineLen-4)=='"'){
                                 if (lineLen<=4) break;
                                 strncat(buf, lineBuf, lineLen-4);
@@ -220,6 +236,7 @@ void readConfig_(struct ConfigOptions* config){
                     break;
                 }
             }
+                endSwitch:
             optOut->line = lineCount;
             free(optStr);
         }
@@ -252,7 +269,7 @@ struct Option* get_(struct ConfigOptions* config, char* optName) {
 void cleanConfig_(struct ConfigOptions* config){
     if (!config) return;
 
-    free(config->name);
+    if (config->name) free(config->name);
     free(config->file);
 
     struct Option* currentOption, *tmpOpt;
