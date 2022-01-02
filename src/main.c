@@ -1,7 +1,7 @@
-//#define MULTI_CONFIG
+#define MULTI_CONFIG
 #define AUTO_GENERATE
 #include "libconf.h"
-#include <time.h>
+#include "timer.h"
 
 struct Config{
     char* joe;
@@ -45,18 +45,23 @@ int main(){
         }
     }*/
 
-    struct OptionOutline options[3] = { {"joe", NUMBER, "Hello world!\nyoe", 12},
+    struct OptionOutline options[3] = {
+                                        {"joe", NUMBER, "Hello world!\nyoe", 12},
                                         {"mama", TEXT, "This is a comment too!", .dv_s="Wooooooo!!!\nNow this is some serious multi line creip"},
                                         {"haha", BOOL, "Funny bool test", .dv_b=true}
                                         };
 #ifndef MULTI_CONFIG
-    clock_t timeStart = clock();
-    initConfig("debug/test.conf", 3, options);
-    clock_t timeInitConfig = clock();
+    TIMER_START(config);
 
+    TIMER_START(init);
+    initConfig("debug/test1.conf", 3, options);
+    TIMER_END(init);
+
+    TIMER_START(read);
     readConfig();
-    clock_t timeReadConfig = clock();
+    TIMER_END(read);
 
+    TIMER_START(get);
     int joe = 0;
     get("joe", &joe);
     printf("joe is: %d\n", joe);
@@ -68,41 +73,39 @@ int main(){
     bool haha = NULL;
     get("haha", &haha);
     printf("haha is: %s\n", haha ? "true" : "false");
-    clock_t timeGetVars = clock();
+    TIMER_END(get);
 
+    TIMER_START(clean);
     cleanConfigs();
-    clock_t timeClean = clock();
-
-    printf("Init: %f ms, Read: %f ms, Get: %f ms, Clean: %f ms, Total: %f ms\n", ((double) timeInitConfig-timeStart)/CLOCKS_PER_SEC*1000,
-           ((double) timeReadConfig-timeInitConfig)/CLOCKS_PER_SEC*1000, ((double)timeGetVars-timeReadConfig)/CLOCKS_PER_SEC*1000,
-           ((double)timeClean-timeGetVars)/CLOCKS_PER_SEC*1000, ((double)timeClean-timeStart)/CLOCKS_PER_SEC*1000);
+    TIMER_END(clean);
+    TIMER_END(config);
 #else
-    clock_t timeStart = clock();
-    initConfig("conf1", "debug/test.conf", 3, options);
-    clock_t timeInitConfig = clock();
+    TIMER_START(config);
+    TIMER_START(init);
+    initConfig("conf1", "debug/test1.conf", 3, options);
+    TIMER_END(init);
 
+    TIMER_START(read);
     readConfig("conf1");
-    clock_t timeReadConfig = clock();
+    TIMER_END(read);
 
+    TIMER_START(get);
     int joe = 0;
     get("conf1", "joe", &joe);
-    printf("joe is: %d\n", joe);
+//    printf("joe is: %d\n", joe);
 
     char* mama = NULL;
     get("conf1", "mama", &mama);
-    printf("mama is: %s\n", mama);
+//    printf("mama is: %s\n", mama);
 
     bool haha = NULL;
     get("conf1", "haha", &haha);
-    printf("haha is: %s\n", haha ? "true" : "false");
-    clock_t timeGetVars = clock();
+//    printf("haha is: %s\n", haha ? "true" : "false");
+    TIMER_END(get);
 
+    TIMER_START(clean);
     cleanConfigs();
-    clock_t timeClean = clock();
-
-    printf("Init: %f ms, Read: %f ms, Get: %f ms, Clean: %f ms, Total: %f ms\n", ((double) timeInitConfig-timeStart)/CLOCKS_PER_SEC*1000,
-           ((double) timeReadConfig-timeInitConfig)/CLOCKS_PER_SEC*1000, ((double)timeGetVars-timeReadConfig)/CLOCKS_PER_SEC*1000,
-           ((double)timeClean-timeGetVars)/CLOCKS_PER_SEC*1000, ((double)timeClean-timeStart)/CLOCKS_PER_SEC*1000);
-
+    TIMER_END(clean);
+    TIMER_END(config);
 #endif
 }

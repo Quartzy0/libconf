@@ -7,12 +7,14 @@
 
 #define LINE_BUFFER_SIZE 1024
 #define MULTI_LINE_BUFFER_MIN_SIZE 1024
+#define MAX_READ 4194304 // 4MB
 
 enum Type{
     BOOL,
     NUMBER,
     DOUBLE,
-    TEXT
+    TEXT,
+    COMPOUND
 };
 
 struct OptionOutline{
@@ -24,7 +26,7 @@ struct OptionOutline{
         double dv_d;
         bool dv_b;
         char* dv_s;
-        void* dv_v;
+        struct OptionOutline* dv_v;
     };
     UT_hash_handle hh;
 };
@@ -36,7 +38,7 @@ struct Option{
         double v_d;
         bool v_b;
         char* v_s;
-        void* v_v;
+        struct Option* v_v;
     };
     enum Type type;
     char* comment;
@@ -45,7 +47,7 @@ struct Option{
         double dv_d;
         bool dv_b;
         char* dv_s;
-        void* dv_v;
+        struct Option* dv_v;
     };
     size_t line;
     UT_hash_handle hh;
@@ -58,6 +60,7 @@ struct ConfigOptions{
     UT_hash_handle hh;
 };
 
+size_t getFileSize(const char* filename);
 
 void initConfig_(struct ConfigOptions** configIn, char* file, size_t count, struct OptionOutline* options);
 
