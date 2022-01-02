@@ -103,11 +103,9 @@ struct Option* outlineToOption(struct OptionOutline* in){
         }
         case COMPOUND:
         {
-            struct OptionOutline* opt, *tmp;
-
-            HASH_ITER(hh, in->dv_v, opt, tmp){
-                struct Option* opt1 = outlineToOption(opt);
-                HASH_ADD_STR(option->dv_v, name, opt1);
+            for (int i = 0; i < in->compoundCount; ++i) {
+                struct Option* opt1 = outlineToOption(&(in->dv_v[i]));
+                HASH_ADD_STR(option->v_v, name, opt1);
             }
             break;
         }
@@ -126,7 +124,7 @@ void initConfig_(struct ConfigOptions** configIn, char* file, size_t count, stru
     }
 }
 
-void parseConfigWhole(struct ConfigOptions* config, char* bufferOriginal, size_t length){
+void parseConfigWhole(struct Option* options, const char* file, char* bufferOriginal, size_t length){
     char* buffer = bufferOriginal;
     char* lineEnd = buffer;
 
@@ -155,16 +153,13 @@ void parseConfigWhole(struct ConfigOptions* config, char* bufferOriginal, size_t
 
         char* optName = NULL;
         size_t optNameLen = trimn(lineBufTrim, assignIndex-lineBufTrim, &optName);
-        char* optStr = NULL;
 
         struct Option* optOut = NULL;
-        HASH_FIND_STR(config->options, optName, optOut);
+        HASH_FIND_STR(options, optName, optOut);
         if (!optOut) {
-            fprintf(stderr, "Unrecognized option '%s' found: %s\n", optName, config->file);
+            fprintf(stderr, "Unrecognized option '%s' found: %s\n", optName, file);
             goto loopEnd;
         }
-
-        size_t optStrLen = trimn(assignIndex+1, endValueIndex-(assignIndex), &optStr);
 
         switch (optOut->type) {
             case TEXT:
@@ -172,14 +167,20 @@ void parseConfigWhole(struct ConfigOptions* config, char* bufferOriginal, size_t
                 if (optOut->v_s != optOut->dv_s && optOut->v_s) free(optOut->v_s);
 
                 char* multiLineStart = strchr(assignIndex + 1, '"');
-                if (!multiLineStart) goto singleNoQuotes;
+                if (!multiLineStart || multiLineStart>lineEnd) goto singleNoQuotes;
                 multiLineStart += 1 + (*(multiLineStart+1)=='\n');
                 char* multiLineEnd = strchr(multiLineStart, '"');
                 if (!multiLineEnd) goto singleNoQuotes;
+                buffer = strchrnul_(multiLineEnd, '\n')+1;
+                lineEnd = buffer;
                 if (*(multiLineEnd-1)=='\n') multiLineEnd--;
 
                 optOut->v_s = strndup(multiLineStart, multiLineEnd-multiLineStart);
-                break;
+                if (buffer==1 || !buffer){
+                    free(optName);
+                    return;
+                }
+                goto loopEndR;
 
                 singleNoQuotes:
                 {
@@ -195,7 +196,7 @@ void parseConfigWhole(struct ConfigOptions* config, char* bufferOriginal, size_t
                 long tempL = strtol(start, &endPtr, 10);
                 if (endPtr==start){
                     //error
-                    fprintf(stderr, "Invalid integer for option %s: %s \n", optName, config->file);
+                    fprintf(stderr, "Invalid integer for option %s: %s \n", optName, file);
                     optOut->v_l = optOut->dv_l;
                 }else{
                     optOut->v_l = tempL;
@@ -208,9 +209,9 @@ void parseConfigWhole(struct ConfigOptions* config, char* bufferOriginal, size_t
                 char* start = NULL;
                 trimnp(assignIndex+1, lineEnd, &start);
                 double tempD = strtod(start, &endPtr);
-                if (endPtr==optStr){
+                if (endPtr==start){
                     //error
-                    fprintf(stderr, "Invalid double for option %s: %s\n", optName, config->file);
+                    fprintf(stderr, "Invalid double for option %s: %s\n", optName, file);
                     optOut->v_d = optOut->dv_d;
                 }else{
                     optOut->v_d = tempD;
@@ -225,7 +226,7 @@ void parseConfigWhole(struct ConfigOptions* config, char* bufferOriginal, size_t
                     optOut->v_b = true;
                     break;
                 }else if (!(!strncasecmp(start, "false", 5) || !strncasecmp(start, "no", 2))){
-                    fprintf(stderr, "Invalid boolean value for option %s. Must be true, false, yes or no: %s\n", optName, config->file);
+                    fprintf(stderr, "Invalid boolean value for option %s. Must be true, false, yes or no: %s\n", optName, file);
                     optOut->v_b = optOut->dv_b;
                     break;
                 }
@@ -235,35 +236,45 @@ void parseConfigWhole(struct ConfigOptions* config, char* bufferOriginal, size_t
             case COMPOUND:
             {
                 char* compoundStart = strchr(assignIndex+1, '{');
-                if (!compoundStart){
-                    fprintf(stderr, "Compound must start with '{': %s\n", config->file);
+                if (!compoundStart || compoundStart > strchr(lineEnd+1, '\n')){
+                    fprintf(stderr, "Compound must start with '{' in option %s: %s\n", optName, file);
                     optOut->v_v = optOut->dv_v;
 
                     free(optName);
-                    free(optStr);
-                    free(lineBufTrim);
                     return;
                 }
-                char* compoundEnd = strchr(assignIndex+1, '}');
-                if (!compoundEnd){
-                    fprintf(stderr, "Compound must end with '}': %s\n", config->file);
-                    optOut->v_v = optOut->dv_v;
+                int openCount = 1;
+                char* compoundEnd = NULL;
+                for (char* i = compoundStart+1;i<compoundStart+length;++i){
+                    if (*i=='{') openCount++;
+                    if (*i=='}') openCount--;
+                    if (!openCount){
+                        compoundEnd = i;
+                        break;
+                    }
+                }
+                if (openCount){
+                    fprintf(stderr, "Compound must end with '}' in option %s: %s\n", optName, file);
 
                     free(optName);
-                    free(optStr);
-                    free(lineBufTrim);
                     return;
                 }
 
-
+                parseConfigWhole(optOut->v_v, file, compoundStart+1, compoundEnd-compoundStart+1);
+                buffer = strchrnul_(compoundEnd, '\n');
+                if (!buffer){
+                    free(optName);
+                    return;
+                }
+                lineEnd = buffer;
             }
         }
 
 
         loopEnd:
-        free(optName);
-        free(optStr);
         buffer = lineEnd + 1;
+        loopEndR:
+        free(optName);
     }
 }
 
@@ -306,7 +317,7 @@ void readConfig_(struct ConfigOptions* config){
 
         bufferOriginal[length] = '\0'; //Must be null terminated
 
-        parseConfigWhole(config, bufferOriginal, length);
+        parseConfigWhole(config->options, config->file, bufferOriginal, length);
 
         free(bufferOriginal);
         return;
@@ -487,18 +498,32 @@ void readConfig_(struct ConfigOptions* config){
     fclose(fp);
 }
 
-struct Option* get_(struct ConfigOptions* config, char* optName) {
-    if(!config){
+struct Option* get_(struct Option* options, char* optName) {
+    if(!options){
         fprintf(stderr, "Config not yet initialized\n");
         return NULL;
     }
 
+    char* dotIndex = strchr(optName, '.');
+    char* name = optName;
+    if (dotIndex){
+        name = strndup(optName, dotIndex-optName);
+    }
+
     struct Option* opt;
-    HASH_FIND_STR(config->options, optName, opt);
+    HASH_FIND_STR(options, name, opt);
     if (!opt){
-        fprintf(stderr, "Option %s not found in config '%s'\n", optName, config->file);
+        fprintf(stderr, "Option %s not found\n", optName);
         return NULL;
     }
+    if (dotIndex){
+        if (opt->type!=COMPOUND){
+            fprintf(stderr, "Only compound type options can have child options. Option %s is not compound.", name);
+            return NULL;
+        }
+        return get_(opt->v_v, dotIndex+1);
+    }
+
     return opt;
 }
 
@@ -508,19 +533,7 @@ void cleanConfig_(struct ConfigOptions* config){
     if (config->name) free(config->name);
     free(config->file);
 
-    struct Option* currentOption, *tmpOpt;
-
-    HASH_ITER(hh, config->options, currentOption, tmpOpt) {
-        HASH_DEL(config->options, currentOption);
-
-        if(currentOption->type==TEXT){
-            free(currentOption->v_s);
-            if (currentOption->v_s!=currentOption->dv_s) free(currentOption->dv_s); //Prevent double free in the case that the default and value are the same
-        }
-        free(currentOption->name);
-        free(currentOption->comment);
-        free(currentOption);
-    }
+    cleanOptions(config->options);
 
     free(config);
 }
@@ -607,4 +620,70 @@ size_t getFileSize(const char* filename) {
     HFILE file = OpenFile(filename, fileInfo, OF_READ);
     return GetFileSize(file, NULL);
 #endif
+}
+
+void cleanOptions(struct Option *options) {
+    if (!options)return;
+    struct Option* opt, *tmp;
+
+    HASH_ITER(hh, options, opt, tmp){
+        HASH_DEL(options, opt);
+
+        if(opt->type==TEXT){
+            free(opt->v_s);
+            if (opt->v_s!=opt->dv_s) free(opt->dv_s); //Prevent double free in the case that the default and value are the same
+        }else if (opt->type==COMPOUND){
+            cleanOptions(opt->v_v);
+            if (opt->v_v!=opt->dv_v) cleanOptions(opt->dv_v);
+        }
+        free(opt->name);
+        free(opt->comment);
+        free(opt);
+    }
+}
+
+void cleanOptionValues(struct Option *options) {
+    if (!options)return;
+    struct Option* opt, *tmp;
+
+    HASH_ITER(hh, options, opt, tmp){
+        if(opt->type==TEXT){
+            free(opt->v_s);
+            if (opt->v_s!=opt->dv_s) free(opt->dv_s); //Prevent double free in the case that the default and value are the same
+        }else if (opt->type==COMPOUND){
+            cleanOptionValues(opt->v_v);
+            if (opt->v_v!=opt->dv_v) cleanOptionValues(opt->dv_v);
+        }
+    }
+}
+
+void optionToDefault(struct Option *option) {
+    switch (option->type) {
+        case TEXT: {
+            if (option->dv_s) {
+                option->v_s = option->dv_s;
+            }
+            break;
+        }
+        case NUMBER: {
+            option->v_l = option->dv_l;
+            break;
+        }
+        case DOUBLE: {
+            option->v_d = option->dv_d;
+            break;
+        }
+        case BOOL: {
+            option->v_b = option->dv_b;
+            break;
+        }
+        case COMPOUND: {
+            struct Option *opt, *tmp;
+
+            HASH_ITER(hh, option->v_v, opt, tmp) {
+                optionToDefault(opt);
+            }
+            break;
+        }
+    }
 }

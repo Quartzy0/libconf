@@ -28,6 +28,7 @@ struct OptionOutline{
         char* dv_s;
         struct OptionOutline* dv_v;
     };
+    size_t compoundCount;
     UT_hash_handle hh;
 };
 
@@ -68,9 +69,15 @@ void readConfig_(struct ConfigOptions* config);
 
 void generateDefault_(struct ConfigOptions* config);
 
-struct Option* get_(struct ConfigOptions* config, char* optName);
+struct Option* get_(struct Option* options, char* optName);
 
 void cleanConfig_(struct ConfigOptions* config);
+
+void cleanOptions(struct Option* options);
+
+void cleanOptionValues(struct Option* options);
+
+void optionToDefault(struct Option* option);
 
 #define SET_FROM_OPTION(out, o) do{                                         \
     *(out) = _Generic((*(out)),                                             \
@@ -144,7 +151,7 @@ extern struct ConfigOptions* configs; //Hash map of multiple configs
         fprintf(stderr, "Config '%s' not yet initialized", confName);       \
         break;                                                              \
     }                                                                       \
-    struct Option* o = get_(c, optName);                                    \
+    struct Option* o = get_(c->options, optName);                           \
     SET_FROM_OPTION(out, o);                                                \
 }while(0)
 #define cleanConfigs() do{                                                  \
@@ -173,7 +180,7 @@ extern struct ConfigOptions* singleConfig; //Only one config
 #endif
 #define readConfig() readConfig_(singleConfig)
 #define get(optName, out) do{                                               \
-    struct Option* o = get_(singleConfig, optName);                         \
+    struct Option* o = get_(singleConfig->options, optName);                \
     SET_FROM_OPTION(out, o);                                                \
 }while(0)
 #define cleanConfigs() cleanConfig_(singleConfig)
