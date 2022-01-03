@@ -284,218 +284,41 @@ void readConfig_(struct ConfigOptions* config){
         return;
     }
 
-    if (getFileSize(config->file)<=MAX_READ){
-        char* bufferOriginal = NULL;
-        size_t length;
-        FILE* fp = fopen(config->file, "r");
-        if (!fp){
-            fprintf(stderr, "Error while opening file '%s': '%s'", config->file, strerror(errno));
-            return;
-        }
-
-        if(fseek(fp, 0, SEEK_END)){
-            fprintf(stderr, "Error while seeking end of file '%s': '%s'", config->file, strerror(errno));
-            return;
-        }
-        length = ftell(fp);
-
-        if (fseek(fp, 0, SEEK_SET)){
-            fprintf(stderr, "Error while seeking start of file '%s': '%s'", config->file, strerror(errno));
-            return;
-        }
-
-        bufferOriginal = malloc(length + 1);
-        if (!bufferOriginal){
-            fprintf(stderr, "Error allocating memory for reading file '%s': '%s'", config->file, strerror(errno));
-            return;
-        }
-        if(!fread(bufferOriginal, 1, length, fp)){
-            fprintf(stderr, "Error while reading file '%s': '%s'", config->file, strerror(errno));
-            return;
-        }
-        fclose(fp);
-
-        bufferOriginal[length] = '\0'; //Must be null terminated
-
-        parseConfigWhole(config->options, config->file, bufferOriginal, length);
-
-        free(bufferOriginal);
-        return;
-    }
-
-    FILE* fp = fopen(config->file, "r"); //Open file from config with read access
+    char* bufferOriginal = NULL;
+    size_t length;
+    FILE* fp = fopen(config->file, "r");
     if (!fp){
-        fprintf(stderr, "Config file %s not found\n", config->file);
+        fprintf(stderr, "Error while opening file '%s': '%s'", config->file, strerror(errno));
         return;
     }
-    char* lineBuf = (char*) malloc(LINE_BUFFER_SIZE);
-    int len = LINE_BUFFER_SIZE;
-    size_t lineCount = 0; //Line count used to print useful error messages
 
-    while(fgets(lineBuf, len, fp)){
-        lineCount++;
-        char* lineBufTrim = NULL;
-        if(!trim(lineBuf, &lineBufTrim)){ //trim returns length of trimmed string. If the new string is 0, continue to the next line
-            if (lineBufTrim) free(lineBufTrim);
-            continue;
-        }
+    if(fseek(fp, 0, SEEK_END)){
+        fprintf(stderr, "Error while seeking end of file '%s': '%s'", config->file, strerror(errno));
+        return;
+    }
+    length = ftell(fp);
 
-        char* optionName = NULL;
-
-        char* commentIndex = strchr(lineBufTrim, '#');
-        if (commentIndex){
-            *commentIndex = '\0';
-            commentIndex++;
-        }
-        char* assignIndex = strchr(lineBufTrim, '=');
-        if (!commentIndex && !assignIndex){
-            fprintf(stderr, "Assignment operator ('=') not found: %s:%zu\n", config->file, lineCount);
-
-            free(optionName);
-            free(lineBufTrim);
-            free(lineBuf);
-            fclose(fp);
-            return;
-        }
-        if (!assignIndex)continue;
-        if (lineBufTrim==assignIndex){
-            fprintf(stderr, "Option name can not be empty: %s:%zu\n", config->file, lineCount);
-
-            free(optionName);
-            free(lineBufTrim);
-            free(lineBuf);
-            fclose(fp);
-            return;
-        }
-
-        char* optionNameUntrimmed = strndup(lineBufTrim, assignIndex-lineBufTrim);
-        char* strValueUntrimmed = strdup(assignIndex+1);
-
-
-        trim(optionNameUntrimmed, &optionName);
-        struct Option* optOut = NULL;
-        HASH_FIND_STR(config->options, optionName, optOut);
-        if (!optOut){
-            fprintf(stderr, "Unrecognized option '%s' found: %s:%zu\n", optionName, config->file, lineCount);
-        }else{
-            char* optStr = NULL;
-            size_t optStrLen = trim(strValueUntrimmed, &optStr);
-            switch (optOut->type) {
-                case TEXT:
-                {
-                    if (optOut->v_s != optOut->dv_s && optOut->v_s) free(optOut->v_s);
-                    if (*optStr=='"' && *(optStr+1)=='"' && *(optStr+2)=='"'){
-                        if (optStrLen>3 && *(optStr+optStrLen-1)=='"' && *(optStr+optStrLen-2)=='"' && *(optStr+optStrLen-3)=='"'){
-                            *(optStr+optStrLen-3) = '\0';
-                            optOut->v_s = strndup(optStr+3, optStrLen-3);
-                            break;
-                        }
-                        char* buf = NULL;
-                        if(!(buf = malloc(MULTI_LINE_BUFFER_MIN_SIZE))){
-                            fprintf(stderr, "Error while allocating space for multi-line buffer: '%s'", strerror(errno));
-                            break;
-                        }
-                        buf[0] = '\0';
-                        size_t bufLen = 0;
-                        size_t bufMaxLen = MULTI_LINE_BUFFER_MIN_SIZE;
-                        if (optStrLen>3) {
-                            strcat(buf, optStr+3);
-                            bufLen = optStrLen-3;
-                            *(buf + bufLen - 1) = '\n';
-                            *(buf + bufLen) = '\0';
-                        }
-
-                        while(fgets(lineBuf, len, fp)){
-                            lineCount++;
-                            size_t lineLen = strlen(lineBuf);
-                            if (bufLen+lineLen>=bufMaxLen){
-                                char* newBuf = realloc(buf, bufMaxLen+MULTI_LINE_BUFFER_MIN_SIZE);
-                                if (!newBuf){
-                                    fprintf(stderr, "Error while reallocating memory for multi-line buffer: '%s'",
-                                            strerror(errno));
-                                    if (*(buf + bufLen - 1)=='\n') *(buf + bufLen - 1) = '\0';
-                                    optOut->v_s = strdup(buf);
-                                    free(buf);
-                                    goto endSwitch;
-                                }
-                                bufMaxLen+=MULTI_LINE_BUFFER_MIN_SIZE;
-                                buf = newBuf;
-                            }
-                            if (*(lineBuf+lineLen-2)=='"' && *(lineBuf+lineLen-3)=='"' && *(lineBuf+lineLen-4)=='"'){
-                                if (lineLen<=4) break;
-                                strncat(buf, lineBuf, lineLen-4);
-                                bufLen+=lineLen-4;
-                                break;
-                            }
-                            strcat(buf, lineBuf);
-                            bufLen+=lineLen;
-                        }
-                        if (*(buf + bufLen - 1)=='\n') *(buf + bufLen - 1) = '\0';
-                        optOut->v_s = strdup(buf);
-                        free(buf);
-                        break;
-                    }
-                    if ((*optStr=='"' && *(optStr + optStrLen - 1)=='"') ||
-                        (*optStr=='\'' && *(optStr + optStrLen - 1)=='\'')){
-                        *(optStr + optStrLen - 1) = '\0';
-                        optOut->v_s = strndup(optStr+1, optStrLen-2);
-                    }else
-                        optOut->v_s = strdup(optStr);
-                    break;
-                }
-                case NUMBER:
-                {
-                    char* endPtr = NULL;
-                    long tempL = strtol(optStr, &endPtr, 10);
-                    if (endPtr==optStr){
-                        //error
-                        fprintf(stderr, "Invalid integer '%s': %s:%zu\n", strerror(errno), config->file, lineCount);
-                        optOut->v_l = optOut->dv_l;
-                    }else{
-                        optOut->v_l = tempL;
-                    }
-                    break;
-                }
-                case DOUBLE:
-                {
-                    char* endPtr = NULL;
-                    double tempD = strtod(optStr, &endPtr);
-                    if (endPtr==optStr){
-                        //error
-                        fprintf(stderr, "Invalid double '%s': %s:%zu\n", strerror(errno), config->file, lineCount);
-                        optOut->v_d = optOut->dv_d;
-                    }else{
-                        optOut->v_d = tempD;
-                    }
-                    break;
-                }
-                case BOOL:
-                {
-                    if (!strcasecmp(optStr, "true") || !strcasecmp(optStr, "yes")){
-                        optOut->v_b = true;
-                        break;
-                    }else if (!(!strcasecmp(optStr, "false") || !strcasecmp(optStr, "no"))){
-                        fprintf(stderr, "Invalid boolean value '%s'. Must be true, false, yes or no. %s:%zu\n", optStr, config->file, lineCount);
-                        optOut->v_b = optOut->dv_b;
-                        break;
-                    }
-                    optOut->v_b = false;
-                    break;
-                }
-            }
-                endSwitch:
-            optOut->line = lineCount;
-            free(optStr);
-        }
-
-        free(strValueUntrimmed);
-        free(optionNameUntrimmed);
-        free(optionName);
-        free(lineBufTrim);
+    if (fseek(fp, 0, SEEK_SET)){
+        fprintf(stderr, "Error while seeking start of file '%s': '%s'", config->file, strerror(errno));
+        return;
     }
 
-    free(lineBuf);
+    bufferOriginal = malloc(length + 1);
+    if (!bufferOriginal){
+        fprintf(stderr, "Error allocating memory for reading file '%s': '%s'", config->file, strerror(errno));
+        return;
+    }
+    if(!fread(bufferOriginal, 1, length, fp)){
+        fprintf(stderr, "Error while reading file '%s': '%s'", config->file, strerror(errno));
+        return;
+    }
     fclose(fp);
+
+    bufferOriginal[length] = '\0'; //Must be null terminated
+
+    parseConfigWhole(config->options, config->file, bufferOriginal, length);
+
+    free(bufferOriginal);
 }
 
 struct Option* get_(struct Option* options, char* optName) {

@@ -5,10 +5,6 @@
 #include <stdbool.h>
 #include "vendor/uthash/uthash.h"
 
-#define LINE_BUFFER_SIZE 1024
-#define MULTI_LINE_BUFFER_MIN_SIZE 1024
-#define MAX_READ 4194304 // 4MB
-
 enum Type{
     BOOL,
     NUMBER,
