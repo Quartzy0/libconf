@@ -3,48 +3,7 @@
 #include "libconf.h"
 #include "timer.h"
 
-struct Config{
-    char* joe;
-};
-
-struct conf_element
-{
-    char* key;
-    union 
-    {
-        int v_i;
-        float v_f;
-        void* v_ptr;
-        /* data */
-    };
-    int type;
-};
-
-enum Epic_Enum
-{
-    option_1,
-    option_2,
-    option_count,
-};
-
-struct conf_element SOME_ARRAY[option_count] = 
-{
-    [option_1] = {.key = "op1"},
-    [option_2] = {.key = "option2"},
-};
-
-
-
 int main(){
-
-    /*for (enum Epic_Enum i = 0; i < option_count; ++i)
-    {
-        if (!strcmp("epic string", SOME_ARRAY[i].key))
-        {
-            //  Našel
-        }
-    }*/
-
     struct OptionOutline compOpts2[2] = {
             {"lol", NUMBER, "no i disagrre", .dv_l=12},
             {"whyyy", TEXT, "and another one", .dv_s="nother one!"}
@@ -92,7 +51,7 @@ int main(){
 #else
     TIMER_START(config);
     TIMER_START(init);
-    initConfig("conf1", "debug/test1.config", 4, options);
+    initConfig("conf1", "debug/test.config", 4, options);
     TIMER_END(init);
 
     TIMER_START(read);
