@@ -376,9 +376,9 @@ char *generateDef(struct Option *options, char **obuffer, size_t bufferOffset, s
     size_t bufSize = bufferSize;
     char *buf = (*obuffer) + bufferOffset;
 
-    if (bufSize-bufferOffset>=NEW_CONFIG_RANDOM_THRESHOLD){
+    if (bufSize - bufferOffset >= NEW_CONFIG_RANDOM_THRESHOLD) {
         *obuffer = realloc(*obuffer, bufferOffset + NEW_CONFIG_BUFFER_SIZE);
-        if (!*obuffer){
+        if (!*obuffer) {
             fprintf(stderr, "Error while reallocating memory for generated config file: '%s'", strerror(errno));
             return NULL;
         }
@@ -417,7 +417,7 @@ char *generateDef(struct Option *options, char **obuffer, size_t bufferOffset, s
             case TEXT: {
                 *(buf++) = '"';
                 strcpy(buf, opt->v_s);
-                buf+=opt->valueSize;
+                buf += opt->valueSize;
                 *(buf++) = '"';
                 break;
             }
@@ -437,13 +437,13 @@ char *generateDef(struct Option *options, char **obuffer, size_t bufferOffset, s
                 break;
             }
             case COMPOUND: {
-                if (opt->v_v){
+                if (opt->v_v) {
                     *(buf++) = '{';
                     *(buf++) = '\n';
-                    buf = generateDef(opt->v_v, obuffer, buf-*obuffer, bufSize, indent+1);
+                    buf = generateDef(opt->v_v, obuffer, buf - *obuffer, bufSize, indent + 1);
                     if (!buf) return NULL;
-                    addIndent(buf, indent+1);
-                    *(buf-1) = '}';
+                    addIndent(buf, indent + 1);
+                    *(buf - 1) = '}';
                 }
                 break;
             }
@@ -462,7 +462,8 @@ void generateDefault_(struct ConfigOptions *config) {
     }
 
     //Allocate the larger amount of bytes: 1MB or Number of options * 256
-    char *buffer = malloc(NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT*optionCount > NEW_CONFIG_BUFFER_SIZE ? NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT*optionCount : NEW_CONFIG_BUFFER_SIZE);
+    char *buffer = malloc(NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT * optionCount > NEW_CONFIG_BUFFER_SIZE ?
+                          NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT * optionCount : NEW_CONFIG_BUFFER_SIZE);
     char *endBuf = generateDef(config->options, &buffer, 0, NEW_CONFIG_BUFFER_SIZE, 0);
     if (!endBuf)return;
     *endBuf = '\0';
