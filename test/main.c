@@ -19,7 +19,7 @@ int main(){
                                         {"haha", BOOL, "Funny bool test", .dv_b=true},
                                         {"compound_test", COMPOUND, "lolllllllu", .dv_v=compOptions,3}
                                         };
-    struct OptionOutline testOpt = {"test", TEXT, "Long text be like", .dv_s="lipsum"};
+    struct OptionOutline testOpt = {"test", TEXT, "Long text be like\nwoooowooo\nscarrryyyy", .dv_s="lipsum"};
 #ifndef MULTI_CONFIG
     TIMER_START(config);
 
@@ -52,7 +52,7 @@ int main(){
 #else
     TIMER_START(config);
     TIMER_START(init);
-    initConfig("conf1", "debug/large.config", 1, &testOpt);
+    initConfig("conf1", "debug/gentest.config", 4, options);
     TIMER_END(init);
 
     TIMER_START(read);
@@ -60,33 +60,33 @@ int main(){
     TIMER_END(read);
 
     TIMER_START(get);
-//    int joe = 0;
-//    get("conf1", "joe", &joe);
-//    printf("joe is: %d\n", joe);
-//
-//    char* mama = NULL;
-//    get("conf1", "mama", &mama);
-//    printf("mama is: %s\n", mama);
-//
-//    bool haha = NULL;
-//    get("conf1", "haha", &haha);
-//    printf("haha is: %s\n", haha ? "true" : "false");
-//
-//    bool noyes = NULL;
-//    get("conf1", "compound_test.noyes", &noyes);
-//    printf("noyes is: %s\n", noyes ? "true" : "false");
-//
-//    char* test = NULL;
-//    get("conf1", "compound_test.test", &test);
-//    printf("test is: %s\n", test);
-//
-//    char* whyyy = NULL;
-//    get("conf1", "compound_test.compound_test2.whyyy", &whyyy);
-//    printf("whyyy is: %s\n", whyyy);
-//
-//    int lol = 0;
-//    get("conf1", "compound_test.compound_test2.lol", &lol);
-//    printf("lol is: %d\n", lol);
+    int joe = 0;
+    get("conf1", "joe", &joe);
+    printf("joe is: %d\n", joe);
+
+    char* mama = NULL;
+    get("conf1", "mama", &mama);
+    printf("mama is: %s\n", mama);
+
+    bool haha = NULL;
+    get("conf1", "haha", &haha);
+    printf("haha is: %s\n", haha ? "true" : "false");
+
+    bool noyes = NULL;
+    get("conf1", "compound_test.noyes", &noyes);
+    printf("noyes is: %s\n", noyes ? "true" : "false");
+
+    char* test = NULL;
+    get("conf1", "compound_test.test", &test);
+    printf("test is: %s\n", test);
+
+    char* whyyy = NULL;
+    get("conf1", "compound_test.compound_test2.whyyy", &whyyy);
+    printf("whyyy is: %s\n", whyyy);
+
+    int lol = 0;
+    get("conf1", "compound_test.compound_test2.lol", &lol);
+    printf("lol is: %d\n", lol);
     TIMER_END(get);
 
     TIMER_START(clean);

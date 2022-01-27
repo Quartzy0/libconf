@@ -5,7 +5,11 @@
 #include <stdbool.h>
 #include "vendor/uthash/uthash.h"
 
-enum Type{
+#define NEW_CONFIG_BUFFER_SIZE 1024*1024 //1MB
+#define NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT 256 //bytes
+#define NEW_CONFIG_RANDOM_THRESHOLD 200 //bytes
+
+enum Type {
     BOOL,
     NUMBER,
     DOUBLE,
@@ -13,67 +17,70 @@ enum Type{
     COMPOUND
 };
 
-struct OptionOutline{
-    char* name; //Key
+struct OptionOutline {
+    char *name; //Key
     enum Type type;
-    char* comment;
+    char *comment;
     union {
         long dv_l;
         double dv_d;
         bool dv_b;
-        char* dv_s;
-        struct OptionOutline* dv_v;
+        char *dv_s;
+        struct OptionOutline *dv_v;
     };
     size_t compoundCount;
     UT_hash_handle hh;
 };
 
-struct Option{
-    char* name; //Key
+struct Option {
+    char *name; //Key
     union {
         long v_l;
         double v_d;
         bool v_b;
-        char* v_s;
-        struct Option* v_v;
+        char *v_s;
+        struct Option *v_v;
     };
+    size_t valueSize;
     enum Type type;
-    char* comment;
+    char *comment;
     union {
         long dv_l;
         double dv_d;
         bool dv_b;
-        char* dv_s;
-        struct Option* dv_v;
+        char *dv_s;
+        struct Option *dv_v;
     };
     size_t line;
     UT_hash_handle hh;
 };
 
-struct ConfigOptions{
-    char* name; //Key
-    char* file;
-    struct Option* options;
+struct ConfigOptions {
+    char *name; //Key
+    char *file;
+    struct Option *options;
     UT_hash_handle hh;
 };
 
-size_t getFileSize(const char* filename);
+size_t optionCount;
 
-void initConfig_(struct ConfigOptions** configIn, char* file, size_t count, struct OptionOutline* options);
+size_t getFileSize(const char *filename);
 
-void readConfig_(struct ConfigOptions* config);
+void initConfig_(struct ConfigOptions **configIn, char *file, size_t count, struct OptionOutline *options);
 
-void generateDefault_(struct ConfigOptions* config);
+void readConfig_(struct ConfigOptions *config);
 
-struct Option* get_(struct Option* options, char* optName);
+void generateDefault_(struct ConfigOptions *config);
 
-void cleanConfig_(struct ConfigOptions* config);
+struct Option *get_(struct Option *options, char *optName);
 
-void cleanOptions(struct Option* options);
+void cleanConfig_(struct ConfigOptions *config);
 
-void cleanOptionValues(struct Option* options);
+void cleanOptions(struct Option *options);
 
-void optionToDefault(struct Option* option);
+void cleanOptionValues(struct Option *options);
+
+void optionToDefault(struct Option *option);
 
 #define SET_FROM_OPTION(out, o) do{                                         \
     *(out) = _Generic((*(out)),                                             \
@@ -89,7 +96,7 @@ void optionToDefault(struct Option* option);
 }while(0)
 
 #ifdef MULTI_CONFIG
-extern struct ConfigOptions* configs; //Hash map of multiple configs
+extern struct ConfigOptions *configs; //Hash map of multiple configs
 #define generateDefault(confName) do{                                       \
     struct ConfigOptions* c;                                                \
     HASH_FIND_STR(configs, confName, c);                                    \
@@ -148,7 +155,9 @@ extern struct ConfigOptions* configs; //Hash map of multiple configs
         break;                                                              \
     }                                                                       \
     struct Option* o = get_(c->options, optName);                           \
-    SET_FROM_OPTION(out, o);                                                \
+    if(o){                                                                  \
+        SET_FROM_OPTION(out, o);                                            \
+    }                                                                       \
 }while(0)
 #define cleanConfigs() do{                                                  \
     struct ConfigOptions* c, *tmp;                                          \
@@ -177,7 +186,9 @@ extern struct ConfigOptions* singleConfig; //Only one config
 #define readConfig() readConfig_(singleConfig)
 #define get(optName, out) do{                                               \
     struct Option* o = get_(singleConfig->options, optName);                \
-    SET_FROM_OPTION(out, o);                                                \
+    if(o) {                                                                 \
+        SET_FROM_OPTION(out, o);                                            \
+    }                                                                       \
 }while(0)
 #define cleanConfigs() cleanConfig_(singleConfig)
 #endif
