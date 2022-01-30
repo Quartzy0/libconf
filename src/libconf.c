@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <errno.h>
+#include <string.h>
 
 #ifndef _WIN32
 
@@ -12,7 +13,7 @@
 #include <Windows.h>
 #endif
 
-struct ConfigOptions *configs; //Hash map of multiple configs
+struct ConfigOptions **configs; //Hash map of multiple configs
 struct ConfigOptions *singleConfig; //Only one config
 
 //utility functions
@@ -105,9 +106,10 @@ struct Option *outlineToOption(struct OptionOutline *in) {
             break;
         }
         case COMPOUND: {
+            option->v_v = malloc(OPTION_HASHMAP_SIZE * sizeof(struct Option *));
             for (int i = 0; i < in->compoundCount; ++i) {
                 struct Option *opt1 = outlineToOption(&(in->dv_v[i]));
-                HASH_ADD_STR(option->v_v, name, opt1);
+                HASH_ADD(option->v_v, opt1);
             }
             option->valueSize = sizeof(struct Option *);
             break;
@@ -120,15 +122,15 @@ struct Option *outlineToOption(struct OptionOutline *in) {
 void initConfig_(struct ConfigOptions **configIn, char *file, size_t count, struct OptionOutline *options) {
     (*configIn) = malloc(sizeof(struct ConfigOptions));
     (*configIn)->file = strdup(file);
-    (*configIn)->options = NULL;
+    (*configIn)->options = malloc(OPTION_HASHMAP_SIZE * sizeof(struct Option *));
     optionCount = 0;
     for (int i = 0; i < count; ++i) {
         struct Option *opt = outlineToOption(&(options[i]));
-        HASH_ADD_STR((*configIn)->options, name, opt);
+        HASH_ADD((*configIn)->options, opt);
     }
 }
 
-void parseConfigWhole(struct Option *options, const char *file, char *bufferOriginal, size_t length) {
+void parseConfigWhole(struct Option **options, const char *file, char *bufferOriginal, size_t length) {
     char *buffer = bufferOriginal;
     char *lineEnd = buffer;
 
@@ -159,7 +161,7 @@ void parseConfigWhole(struct Option *options, const char *file, char *bufferOrig
         trimn(lineBufTrim, assignIndex - lineBufTrim, &optName);
 
         struct Option *optOut = NULL;
-        HASH_FIND_STR(options, optName, optOut);
+        HASH_FIND(options, optName, optOut);
         if (!optOut) {
             fprintf(stderr, "Unrecognized option '%s' found: %s\n", optName, file);
             goto loopEnd;
@@ -295,28 +297,27 @@ void readConfig_(struct ConfigOptions *config) {
     size_t length;
     FILE *fp = fopen(config->file, "r");
     if (!fp) {
-        fprintf(stderr, "Error while opening file '%s': '%s'", config->file, strerror(errno));
+        fprintf(stderr, "Error while opening file '%s': '%s'\n", config->file, strerror(errno));
         return;
     }
 
-    if (fseek(fp, 0, SEEK_END)) {
-        fprintf(stderr, "Error while seeking end of file '%s': '%s'", config->file, strerror(errno));
-        return;
-    }
-    length = ftell(fp);
-
-    if (fseek(fp, 0, SEEK_SET)) {
-        fprintf(stderr, "Error while seeking start of file '%s': '%s'", config->file, strerror(errno));
+    length = getFileSize(config->file);
+    if (length == 0) {
+        fclose(fp);
         return;
     }
 
     bufferOriginal = malloc(length + 1);
     if (!bufferOriginal) {
-        fprintf(stderr, "Error allocating memory for reading file '%s': '%s'", config->file, strerror(errno));
+        fprintf(stderr, "Error allocating memory for reading file '%s': '%s'\n", config->file, strerror(errno));
+        fclose(fp);
+        free(bufferOriginal);
         return;
     }
     if (!fread(bufferOriginal, 1, length, fp)) {
-        fprintf(stderr, "Error while reading file '%s': '%s'", config->file, strerror(errno));
+        fprintf(stderr, "Error while reading file '%s': '%s'\n", config->file, strerror(errno));
+        fclose(fp);
+        free(bufferOriginal);
         return;
     }
     fclose(fp);
@@ -328,7 +329,7 @@ void readConfig_(struct ConfigOptions *config) {
     free(bufferOriginal);
 }
 
-struct Option *get_(struct Option *options, char *optName) {
+struct Option *get_(struct Option **options, char *optName) {
     if (!options) {
         fprintf(stderr, "Config not yet initialized\n");
         return NULL;
@@ -341,14 +342,14 @@ struct Option *get_(struct Option *options, char *optName) {
     }
 
     struct Option *opt;
-    HASH_FIND_STR(options, name, opt);
+    HASH_FIND(options, name, opt);
     if (!opt) {
         fprintf(stderr, "Option %s not found\n", optName);
         return NULL;
     }
     if (dotIndex) {
         if (opt->type != COMPOUND) {
-            fprintf(stderr, "Only compound type options can have child options. Option %s is not compound.", name);
+            fprintf(stderr, "Only compound type options can have child options. Option %s is not compound.\n", name);
             return NULL;
         }
         return get_(opt->v_v, dotIndex + 1);
@@ -371,8 +372,8 @@ void cleanConfig_(struct ConfigOptions *config) {
 //Utility macro
 #define addIndent(buf, indent) { for(int i = 0;i<(indent);++i) { *((buf)+i)='\t'; } (buf)+=(indent); }
 
-char *generateDef(struct Option *options, char **obuffer, size_t bufferOffset, size_t bufferSize, size_t indent) {
-    struct Option *opt, *tmp;
+char *generateDef(struct Option **options, char **obuffer, size_t bufferOffset, size_t bufferSize, size_t indent) {
+    struct Option *opt;
     size_t bufSize = bufferSize;
     char *buf = (*obuffer) + bufferOffset;
 
@@ -384,80 +385,80 @@ char *generateDef(struct Option *options, char **obuffer, size_t bufferOffset, s
         }
     }
 
-    HASH_ITER(hh, options, opt, tmp) {
-        if (opt->comment) {
-            char *comment = opt->comment;
-            char *commentEnd = comment;
-            while ((commentEnd = strchr(commentEnd + 1, '\n'))) {
+    HASH_ITER(options, opt) {
+            if (opt->comment) {
+                char *comment = opt->comment;
+                char *commentEnd = comment;
+                while ((commentEnd = strchr(commentEnd + 1, '\n'))) {
+                    addIndent(buf, indent);
+                    *(buf++) = '#';
+                    size_t commentLen = commentEnd - comment;
+                    strncpy(buf, comment, commentLen);
+                    buf += commentLen;
+                    *(buf++) = '\n';
+
+                    comment = commentEnd + 1;
+                }
                 addIndent(buf, indent);
                 *(buf++) = '#';
-                size_t commentLen = commentEnd - comment;
+                size_t commentLen = strlen(comment);
                 strncpy(buf, comment, commentLen);
                 buf += commentLen;
                 *(buf++) = '\n';
-
-                comment = commentEnd + 1;
             }
             addIndent(buf, indent);
-            *(buf++) = '#';
-            size_t commentLen = strlen(comment);
-            strncpy(buf, comment, commentLen);
-            buf += commentLen;
+            strcpy(buf, opt->name);
+            buf += strlen(opt->name);
+            *(buf++) = ' ';
+            *(buf++) = '=';
+            *(buf++) = ' ';
+
+            //Insert value
+            switch (opt->type) {
+                case TEXT: {
+                    *(buf++) = '"';
+                    strcpy(buf, opt->v_s);
+                    buf += opt->valueSize;
+                    *(buf++) = '"';
+                    break;
+                }
+                case NUMBER: {
+                    buf += sprintf(buf, "%ld", opt->v_l);
+                    break;
+                }
+                case DOUBLE: {
+                    buf += sprintf(buf, "%f", opt->v_d);
+                    break;
+                }
+                case BOOL: {
+                    if (opt->v_b)
+                        buf += sprintf(buf, "true");
+                    else
+                        buf += sprintf(buf, "false");
+                    break;
+                }
+                case COMPOUND: {
+                    if (opt->v_v) {
+                        *(buf++) = '{';
+                        *(buf++) = '\n';
+                        buf = generateDef(opt->v_v, obuffer, buf - *obuffer, bufSize, indent + 1);
+                        if (!buf) return NULL;
+                        addIndent(buf, indent + 1);
+                        *(buf - 1) = '}';
+                    }
+                    break;
+                }
+            }
+            *(buf++) = '\n';
             *(buf++) = '\n';
         }
-        addIndent(buf, indent);
-        strcpy(buf, opt->name);
-        buf += strlen(opt->name);
-        *(buf++) = ' ';
-        *(buf++) = '=';
-        *(buf++) = ' ';
-
-        //Insert value
-        switch (opt->type) {
-            case TEXT: {
-                *(buf++) = '"';
-                strcpy(buf, opt->v_s);
-                buf += opt->valueSize;
-                *(buf++) = '"';
-                break;
-            }
-            case NUMBER: {
-                buf += sprintf(buf, "%ld", opt->v_l);
-                break;
-            }
-            case DOUBLE: {
-                buf += sprintf(buf, "%f", opt->v_d);
-                break;
-            }
-            case BOOL: {
-                if (opt->v_b)
-                    buf += sprintf(buf, "true");
-                else
-                    buf += sprintf(buf, "false");
-                break;
-            }
-            case COMPOUND: {
-                if (opt->v_v) {
-                    *(buf++) = '{';
-                    *(buf++) = '\n';
-                    buf = generateDef(opt->v_v, obuffer, buf - *obuffer, bufSize, indent + 1);
-                    if (!buf) return NULL;
-                    addIndent(buf, indent + 1);
-                    *(buf - 1) = '}';
-                }
-                break;
-            }
-        }
-        *(buf++) = '\n';
-        *(buf++) = '\n';
-    }
     return buf;
 }
 
 void generateDefault_(struct ConfigOptions *config) {
     FILE *fp = fopen(config->file, "w");
     if (!fp) {
-        fprintf(stderr, "Error occurred while trying to open/create file '%s': %s", config->file, strerror(errno));
+        fprintf(stderr, "Error occurred while trying to open/create file '%s': %s\n", config->file, strerror(errno));
         return;
     }
 
@@ -483,70 +484,27 @@ size_t getFileSize(const char *filename) {
 #endif
 }
 
-void cleanOptions(struct Option *options) {
+void cleanOptions(struct Option **options) {
     if (!options)return;
-    struct Option *opt, *tmp;
+    struct Option *opt;
 
-    HASH_ITER(hh, options, opt, tmp) {
-        HASH_DEL(options, opt);
+    for (struct Option **t = options; t - options <= OPTION_HASHMAP_SIZE, opt = *t; ++t)
+        do {
+            if (!opt) continue;
+            fprintf(stdout, "Option: %s", opt->name);
+        } while (opt && (opt = opt->next));
 
-        if (opt->type == TEXT) {
-            free(opt->v_s);
-            if (opt->v_s != opt->dv_s)
-                free(opt->dv_s); //Prevent double free in the case that the default and value are the same
-        } else if (opt->type == COMPOUND) {
-            cleanOptions(opt->v_v);
-            if (opt->v_v != opt->dv_v) cleanOptions(opt->dv_v);
-        }
-        free(opt->name);
-        free(opt->comment);
-        free(opt);
-    }
-}
-
-void cleanOptionValues(struct Option *options) {
-    if (!options)return;
-    struct Option *opt, *tmp;
-
-    HASH_ITER(hh, options, opt, tmp) {
-        if (opt->type == TEXT) {
-            free(opt->v_s);
-            if (opt->v_s != opt->dv_s)
-                free(opt->dv_s); //Prevent double free in the case that the default and value are the same
-        } else if (opt->type == COMPOUND) {
-            cleanOptionValues(opt->v_v);
-            if (opt->v_v != opt->dv_v) cleanOptionValues(opt->dv_v);
-        }
-    }
-}
-
-void optionToDefault(struct Option *option) {
-    switch (option->type) {
-        case TEXT: {
-            if (option->dv_s) {
-                option->v_s = option->dv_s;
+    HASH_ITER(options, opt) {
+            if (opt->type == TEXT) {
+                free(opt->v_s);
+                if (opt->v_s != opt->dv_s)
+                    free(opt->dv_s); //Prevent double free in the case that the default and value are the same
+            } else if (opt->type == COMPOUND) {
+                cleanOptions(opt->v_v);
+                if (opt->v_v != opt->dv_v) cleanOptions(opt->dv_v);
             }
-            break;
+            free(opt->name);
+            free(opt->comment);
+            free(opt);
         }
-        case NUMBER: {
-            option->v_l = option->dv_l;
-            break;
-        }
-        case DOUBLE: {
-            option->v_d = option->dv_d;
-            break;
-        }
-        case BOOL: {
-            option->v_b = option->dv_b;
-            break;
-        }
-        case COMPOUND: {
-            struct Option *opt, *tmp;
-
-            HASH_ITER(hh, option->v_v, opt, tmp) {
-                optionToDefault(opt);
-            }
-            break;
-        }
-    }
 }
