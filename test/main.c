@@ -5,8 +5,8 @@
 
 int main() {
     struct OptionOutline compOpts2[2] = {
-            {"lol",   NUMBER, "no i disagrre", .dv_l=12},
-            {"whyyy", TEXT,   "and another one", .dv_s="nother one!"}
+            {"lol",   LONG, "no i disagrre", .dv_l=12},
+            {"whyyy", TEXT, "and another one", .dv_s="nother one!"}
     };
     struct OptionOutline compOptions[3] = {
             {"test",           TEXT,     "jaja", .dv_s="very funny default value"},
@@ -14,7 +14,7 @@ int main() {
             {"compound_test2", COMPOUND, "lolanotherone", .dv_v=compOpts2, 2}
     };
     struct OptionOutline options[4] = {
-            {"joe",           NUMBER,   "Hello world!\nyoe", 12},
+            {"joe",           LONG,     "Hello world!\nyoe", 12},
             {"mama",          TEXT,     "This is a comment too!", .dv_s="Wooooooo!!!\nNow this is some serious multi line creip"},
             {"haha",          BOOL,     "Funny bool test", .dv_b=true},
             {"compound_test", COMPOUND, "lolllllllu", .dv_v=compOptions, 3}

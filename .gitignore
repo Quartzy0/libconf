@@ -2,3 +2,4 @@
 /cmake-build-release/
 /build/
 /debug/
+.dir-locals.el

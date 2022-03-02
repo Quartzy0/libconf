@@ -1,4 +1,4 @@
-#include "libconf.h"
+#include "../include/libconf.h"
 
 #include <stdlib.h>
 #include <ctype.h>
@@ -22,26 +22,6 @@ char *strchrnul_(char *s, char c) {
     if (*s == '\0' || *(s - 1) == '\0') return NULL;
     char *val = strchr(s, c);
     return !val ? s + strlen(s) - 1 : val;
-}
-
-/* Returns the new size of the string */
-size_t trim(const char *in, char **out) {
-    if (!in) return 0;
-    const char *begin = in;
-    const char *end = in + strlen(in) - 1;
-    if (begin == end) {
-        if (isspace(*in)) return 0;
-        *out = strdup(in);
-        return strlen(in);
-    }
-
-    while (isspace(*begin))
-        begin++;
-    while (isspace(*end))
-        end--;
-    end++;
-    *out = strndup(begin, end - begin);
-    return end - begin;
 }
 
 size_t trimn(const char *in, size_t n, char **out) {
@@ -87,7 +67,7 @@ struct Option *outlineToOption(struct OptionOutline *in) {
             }
             break;
         }
-        case NUMBER: {
+        case LONG: {
             option->dv_l = in->dv_l;
             option->v_l = option->dv_l;
             option->valueSize = sizeof(long);
@@ -171,30 +151,36 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             case TEXT: {
                 if (optOut->v_s != optOut->dv_s && optOut->v_s) free(optOut->v_s);
 
-                char *multiLineStart = strchr(assignIndex + 1, '"');
-                if (!multiLineStart || multiLineStart > lineEnd) goto singleNoQuotes;
-                multiLineStart += 1 + (*(multiLineStart + 1) == '\n');
-                char *multiLineEnd = strchr(multiLineStart, '"');
-                if (!multiLineEnd) goto singleNoQuotes;
+                char *doubleStart = strchr(assignIndex + 1, '"');
+                char *singleStart = strchr(assignIndex + 1, '\'');
+                bool single = singleStart < doubleStart && singleStart;
+                if((!single && !doubleStart) || (single ? singleStart > lineEnd : doubleStart > lineEnd)) {
+                    fprintf(stderr, "Error at option %s: String must start on the same line as the option definition with ' or \"\n", optName);
+                    break;
+                }
+                char searchChar = single ? '\'' : '"';
+                char *stringStart = single ? singleStart : doubleStart;
+                stringStart += 1 + (*(stringStart + 1) == '\n');
+
+                char *multiLineEnd = strchr(stringStart, searchChar);
+                if(!multiLineEnd){
+                    fprintf(stderr, "Error at option %s: String must end with ' or \"\n", optName);
+                    break;
+                }
+
                 buffer = strchrnul_(multiLineEnd, '\n') + 1;
                 lineEnd = buffer;
                 if (*(multiLineEnd - 1) == '\n') multiLineEnd--;
 
-                optOut->v_s = strndup(multiLineStart, multiLineEnd - multiLineStart);
-                optOut->valueSize = multiLineEnd - multiLineStart;
+                optOut->v_s = strndup(stringStart, multiLineEnd - stringStart);
+                optOut->valueSize = multiLineEnd - stringStart;
                 if (buffer == 1 || !buffer) {
                     free(optName);
                     return;
                 }
                 goto loopEndR;
-
-                singleNoQuotes:
-                {
-                    optOut->valueSize = trimn(assignIndex + 1, lineEnd - assignIndex, &optOut->v_s);
-                }
-                break;
             }
-            case NUMBER: {
+            case LONG: {
                 char *endPtr = NULL;
                 char *start = NULL;
                 trimnp(assignIndex + 1, lineEnd, &start);
@@ -422,7 +408,7 @@ char *generateDef(struct Option **options, char **obuffer, size_t bufferOffset, 
                     *(buf++) = '"';
                     break;
                 }
-                case NUMBER: {
+                case LONG: {
                     buf += sprintf(buf, "%ld", opt->v_l);
                     break;
                 }

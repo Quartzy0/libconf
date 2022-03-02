@@ -69,10 +69,16 @@
 
 enum Type {
     BOOL,
-    NUMBER,
+    LONG,
     DOUBLE,
     TEXT,
-    COMPOUND
+    COMPOUND,
+    ARRAY_BOOL,
+    ARRAY_LONG,
+    ARRAY_DOUBLE,
+    ARRAY_TEXT,
+    ARRAY_COMPOUND,
+    ARRAY_ARRAY
 };
 
 struct OptionOutline {
