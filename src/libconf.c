@@ -143,7 +143,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
         struct Option *optOut = NULL;
         HASH_FIND(options, optName, optOut);
         if (!optOut) {
-            fprintf(stderr, "Unrecognized option '%s' found: %s\n", optName, file);
+            fprintf(stderr, "Warning in %s: Unrecognized option '%s' found\n", file, optName);
             goto loopEnd;
         }
 
@@ -155,7 +155,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 char *singleStart = strchr(assignIndex + 1, '\'');
                 bool single = singleStart < doubleStart && singleStart;
                 if((!single && !doubleStart) || (single ? singleStart > lineEnd : doubleStart > lineEnd)) {
-                    fprintf(stderr, "Error at option %s: String must start on the same line as the option definition with ' or \"\n", optName);
+                    fprintf(stderr, "Error at option %s:%s: String must start on the same line as the option definition with ' or \"\n", file, optName);
                     break;
                 }
                 char searchChar = single ? '\'' : '"';
@@ -164,7 +164,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
 
                 char *multiLineEnd = strchr(stringStart, searchChar);
                 if(!multiLineEnd){
-                    fprintf(stderr, "Error at option %s: String must end with ' or \"\n", optName);
+                    fprintf(stderr, "Error at option %s:%s: String must end with ' or \"\n", file, optName);
                     break;
                 }
 
@@ -187,7 +187,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 long tempL = strtol(start, &endPtr, 10);
                 if (endPtr == start) {
                     //error
-                    fprintf(stderr, "Invalid integer for option %s: %s \n", optName, file);
+                    fprintf(stderr, "Error at option %s:%s: Invalid integer \n", file, optName);
                     optOut->v_l = optOut->dv_l;
                 } else {
                     optOut->v_l = tempL;
@@ -202,7 +202,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 double tempD = strtod(start, &endPtr);
                 if (endPtr == start) {
                     //error
-                    fprintf(stderr, "Invalid double for option %s: %s\n", optName, file);
+                    fprintf(stderr, "Error at option %s:%s: Invalid double\n", file, optName);
                     optOut->v_d = optOut->dv_d;
                 } else {
                     optOut->v_d = tempD;
@@ -218,8 +218,8 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                     optOut->valueSize = sizeof(bool);
                     break;
                 } else if (!(!strncasecmp(start, "false", 5) || !strncasecmp(start, "no", 2))) {
-                    fprintf(stderr, "Invalid boolean value for option %s. Must be true, false, yes or no: %s\n",
-                            optName, file);
+                    fprintf(stderr, "Error at option %s:%s: Invalid boolean. Must be true, false, yes or no\n",
+                            file, optName);
                     optOut->v_b = optOut->dv_b;
                     optOut->valueSize = sizeof(bool);
                     break;
@@ -231,7 +231,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             case COMPOUND: {
                 char *compoundStart = strchr(assignIndex + 1, '{');
                 if (!compoundStart || compoundStart > strchr(lineEnd + 1, '\n')) {
-                    fprintf(stderr, "Compound must start with '{' in option %s: %s\n", optName, file);
+                    fprintf(stderr, "Error at option %s:%s: Compound must start with '{'\n", file, optName);
                     optOut->v_v = optOut->dv_v;
 
                     free(optName);
@@ -248,7 +248,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                     }
                 }
                 if (openCount) {
-                    fprintf(stderr, "Compound must end with '}' in option %s: %s\n", optName, file);
+                    fprintf(stderr, "Error at option %s:%s: Compound must end with '}'\n", file, optName);
 
                     free(optName);
                     return;
@@ -275,7 +275,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
 
 void readConfig_(struct ConfigOptions *config) {
     if (!config) {
-        fprintf(stderr, "Config not yet initialized\n");
+        fprintf(stderr, "Error: Config '%s' not yet initialized\n", config->file);
         return;
     }
 
@@ -283,7 +283,7 @@ void readConfig_(struct ConfigOptions *config) {
     size_t length;
     FILE *fp = fopen(config->file, "r");
     if (!fp) {
-        fprintf(stderr, "Error while opening file '%s': '%s'\n", config->file, strerror(errno));
+        fprintf(stderr, "Error: Can't open file '%s': '%s'\n", config->file, strerror(errno));
         return;
     }
 
@@ -295,13 +295,13 @@ void readConfig_(struct ConfigOptions *config) {
 
     bufferOriginal = malloc(length + 1);
     if (!bufferOriginal) {
-        fprintf(stderr, "Error allocating memory for reading file '%s': '%s'\n", config->file, strerror(errno));
+        fprintf(stderr, "Error: Can't allocate memory for reading file '%s': '%s'\n", config->file, strerror(errno));
         fclose(fp);
         free(bufferOriginal);
         return;
     }
     if (!fread(bufferOriginal, 1, length, fp)) {
-        fprintf(stderr, "Error while reading file '%s': '%s'\n", config->file, strerror(errno));
+        fprintf(stderr, "Error: Can't read file '%s': '%s'\n", config->file, strerror(errno));
         fclose(fp);
         free(bufferOriginal);
         return;
@@ -317,7 +317,7 @@ void readConfig_(struct ConfigOptions *config) {
 
 struct Option *get_(struct Option **options, char *optName) {
     if (!options) {
-        fprintf(stderr, "Config not yet initialized\n");
+        fprintf(stderr, "Error: Config not yet initialized\n");
         return NULL;
     }
 
@@ -330,12 +330,12 @@ struct Option *get_(struct Option **options, char *optName) {
     struct Option *opt;
     HASH_FIND(options, name, opt);
     if (!opt) {
-        fprintf(stderr, "Option %s not found\n", optName);
+        fprintf(stderr, "Error: Option %s not found\n", optName);
         return NULL;
     }
     if (dotIndex) {
         if (opt->type != COMPOUND) {
-            fprintf(stderr, "Only compound type options can have child options. Option %s is not compound.\n", name);
+            fprintf(stderr, "Error: Only compound type options can have child options. Option %s is not compound.\n", name);
             return NULL;
         }
         return get_(opt->v_v, dotIndex + 1);
@@ -366,7 +366,7 @@ char *generateDef(struct Option **options, char **obuffer, size_t bufferOffset, 
     if (bufSize - bufferOffset >= NEW_CONFIG_RANDOM_THRESHOLD) {
         *obuffer = realloc(*obuffer, bufferOffset + NEW_CONFIG_BUFFER_SIZE);
         if (!*obuffer) {
-            fprintf(stderr, "Error while reallocating memory for generated config file: '%s'", strerror(errno));
+            fprintf(stderr, "Error: Can't reallocate memory for generated config file: '%s'", strerror(errno));
             return NULL;
         }
     }
@@ -444,7 +444,7 @@ char *generateDef(struct Option **options, char **obuffer, size_t bufferOffset, 
 void generateDefault_(struct ConfigOptions *config) {
     FILE *fp = fopen(config->file, "w");
     if (!fp) {
-        fprintf(stderr, "Error occurred while trying to open/create file '%s': %s\n", config->file, strerror(errno));
+        fprintf(stderr, "Error: Can't open/create file '%s': %s\n", config->file, strerror(errno));
         return;
     }
 
@@ -473,12 +473,6 @@ size_t getFileSize(const char *filename) {
 void cleanOptions(struct Option **options) {
     if (!options)return;
     struct Option *opt;
-
-    for (struct Option **t = options; t - options <= OPTION_HASHMAP_SIZE, opt = *t; ++t)
-        do {
-            if (!opt) continue;
-            fprintf(stdout, "Option: %s", opt->name);
-        } while (opt && (opt = opt->next));
 
     HASH_ITER(options, opt) {
             if (opt->type == TEXT) {
