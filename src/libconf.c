@@ -154,8 +154,10 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 char *doubleStart = strchr(assignIndex + 1, '"');
                 char *singleStart = strchr(assignIndex + 1, '\'');
                 bool single = singleStart < doubleStart && singleStart;
-                if((!single && !doubleStart) || (single ? singleStart > lineEnd : doubleStart > lineEnd)) {
-                    fprintf(stderr, "Error at option %s:%s: String must start on the same line as the option definition with ' or \"\n", file, optName);
+                if ((!single && !doubleStart) || (single ? singleStart > lineEnd : doubleStart > lineEnd)) {
+                    fprintf(stderr,
+                            "Error at option %s:%s: String must start on the same line as the option definition with ' or \"\n",
+                            file, optName);
                     break;
                 }
                 char searchChar = single ? '\'' : '"';
@@ -163,7 +165,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 stringStart += 1 + (*(stringStart + 1) == '\n');
 
                 char *multiLineEnd = strchr(stringStart, searchChar);
-                if(!multiLineEnd){
+                if (!multiLineEnd) {
                     fprintf(stderr, "Error at option %s:%s: String must end with ' or \"\n", file, optName);
                     break;
                 }
@@ -262,6 +264,66 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                     return;
                 }
                 lineEnd = buffer;
+                break;
+            }
+            case ARRAY_BOOL: {
+                char *arrayStart = strchr(assignIndex + 1, '[');
+                if(!arrayStart || arrayStart > lineEnd){
+                    fprintf(stderr, "Error at option %s:%s: Array must start on the same line as the option definition with [\n", file, optName);
+                    break;
+                }
+                char *arrayEnd = strchr(arrayStart + 1, ']');
+                if(!arrayEnd){
+                    fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
+                    break;
+                }
+
+                bool *arr = malloc(sizeof(bool) * ARRAY_ALLOCATION);
+                size_t i = 0;
+                size_t arraySize = ARRAY_ALLOCATION;
+                char *nextElement = arrayStart + 1;
+                char *currentElement = arrayStart + 1;
+                do{
+                    nextElement = strchr(nextElement + 1, ',');
+                    if(nextElement>arrayEnd || !nextElement) nextElement = arrayEnd;
+                    char *valueStart;
+                    trimnp(currentElement, nextElement, &valueStart);
+                    if(arraySize-2==i){
+                        bool *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(bool));
+                        if(!tmp){
+                            fprintf(stderr, "Error while reallocating memory for bool array: %s\n", strerror(errno));
+                            free(arr);
+                            buffer = arrayEnd + 1;
+                            goto loopEndR;
+                        }
+                        arr = tmp;
+                    }
+                    arr[i] = !strncasecmp(valueStart, "true", 4) || !strncasecmp(valueStart, "yes", 3);
+                    if (!arr[i] && !(!strncasecmp(valueStart, "false", 5) || !strncasecmp(valueStart, "no", 2))) { // If option is not true or false
+                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid boolean. Must be true, false, yes or no\n",
+                                file, optName, i);
+                        free(arr);
+                        buffer = arrayEnd + 1;
+                        goto loopEndR;
+                    }
+                    i++;
+                    currentElement = nextElement + 1;
+                }while(nextElement!=arrayEnd);
+
+                if(i!=arraySize){
+                    bool *tmp = realloc(arr, i * sizeof(bool));
+                    if(!tmp){
+                        fprintf(stderr, "Error while reallocating memory for bool array: %s\n", strerror(errno));
+                        free(arr);
+                        buffer = arrayEnd + 1;
+                        goto loopEndR;
+                    }
+                    arr = tmp;
+                }
+                optOut->v_a.a_b = arr;
+                optOut->v_a.len = i;
+                optOut->valueSize = i * sizeof(bool);
+                break;
             }
         }
 
@@ -335,7 +397,8 @@ struct Option *get_(struct Option **options, char *optName) {
     }
     if (dotIndex) {
         if (opt->type != COMPOUND) {
-            fprintf(stderr, "Error: Only compound type options can have child options. Option %s is not compound.\n", name);
+            fprintf(stderr, "Error: Only compound type options can have child options. Option %s is not compound.\n",
+                    name);
             return NULL;
         }
         return get_(opt->v_v, dotIndex + 1);

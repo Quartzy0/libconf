@@ -13,17 +13,18 @@ int main() {
             {"noyes",          BOOL,     "jerrry", .dv_b=false},
             {"compound_test2", COMPOUND, "lolanotherone", .dv_v=compOpts2, 2}
     };
-    struct OptionOutline options[4] = {
-            {"joe",           LONG,     "Hello world!\nyoe", 12},
-            {"mama",          TEXT,     "This is a comment too!", .dv_s="Wooooooo!!!\nNow this is some serious multi line creip"},
-            {"haha",          BOOL,     "Funny bool test", .dv_b=true},
+    struct OptionOutline options[5] = {
+            {"joe", LONG, "Hello world!\nyoe", 12},
+            {"mama", TEXT, "This is a comment too!", .dv_s="Wooooooo!!!\nNow this is some serious multi line creip"},
+            {"haha", BOOL, "Funny bool test", .dv_b=true},
+            {"bruh", ARRAY_BOOL, "Funny man"},
             {"compound_test", COMPOUND, "lolllllllu", .dv_v=compOptions, 3}
     };
     struct OptionOutline testOpt = {"test", TEXT, "Long text be like\nwoooowooo\nscarrryyyy", .dv_s="lipsum"};
 #ifndef MULTI_CONFIG
     TIMER_START(config);
     TIMER_START(init);
-    initConfig("debug/test.config", 4, options);
+    initConfig("debug/test.config", 5, options);
     TIMER_END(init);
 
     TIMER_START(read);
@@ -58,6 +59,15 @@ int main() {
     int lol = 0;
     get("compound_test.compound_test2.lol", &lol);
     printf("lol is: %d\n", lol);
+
+    bool *bool_arr;
+    size_t bool_len = 0;
+    get_array("bruh", &bool_arr, bool_len);
+
+    for (int i = 0; i < bool_len; ++i){
+        printf("bruh[%d]=%d\n", i, bool_arr[i]);
+    }
+
     TIMER_END(get);
 
     TIMER_START(clean);

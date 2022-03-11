@@ -9,6 +9,7 @@
 #define NEW_CONFIG_BUFFER_SIZE 1024*1024 //1MB
 #define NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT 256 //bytes
 #define NEW_CONFIG_RANDOM_THRESHOLD 200 //bytes
+#define ARRAY_ALLOCATION 20 //elements in array (size in bytes depends on array type)
 
 /* These macros use decltype or the earlier __typeof GNU extension.
    As decltype is only available in newer compilers (VS2010 or gcc 4.3+
@@ -103,6 +104,17 @@ struct Option {
         bool v_b;
         char *v_s;
         struct Option **v_v;
+        struct ArrayOptionValue {
+            union {
+                long *a_l;
+                double *a_d;
+                bool *a_b;
+                char **a_s;
+                struct Option ***a_v;
+                struct ArrayOptionValue *a_a;
+            };
+            size_t len;
+        } v_a;
     };
     size_t valueSize;
     enum Type type;
@@ -113,6 +125,10 @@ struct Option {
         bool dv_b;
         char *dv_s;
         struct Option **dv_v;
+        struct {
+            void *a;
+            size_t len;
+        } dv_a;
     };
     size_t line;
     struct Option *next; //Used as a linked list in hash map
@@ -151,6 +167,7 @@ void cleanOptions(struct Option **options);
                     float: (o)->v_d,                                        \
                     char*: (o)->v_s,                                        \
                     bool: (o)->v_b,                                         \
+                    bool*: (o)->v_a.a_b,                                    \
                     default: (o)->v_v);                                     \
 }while(0)
 
@@ -220,6 +237,19 @@ extern struct ConfigOptions **configs; //Hash map of multiple configs
         SET_FROM_OPTION(out, o);                                            \
     }                                                                       \
 }while(0)
+#define get(confName, optName, out, size) do{                               \
+    struct ConfigOptions* c;                                                \
+    HASH_FIND(configs, confName, c);                                        \
+    if(!c){                                                                 \
+        fprintf(stderr, "Config '%s' not yet initialized", confName);       \
+        break;                                                              \
+    }                                                                       \
+    struct Option* o = get_(c->options, optName);                           \
+    if(o){                                                                  \
+        SET_FROM_OPTION(out, o);                                            \
+    }                                                                       \
+    (size) = o->v_a.len;                                                    \
+}while(0)
 #define cleanConfigs() do{                                                  \
     struct ConfigOptions* c;                                                \
     HASH_ITER(configs, c){                                                  \
@@ -250,6 +280,13 @@ extern struct ConfigOptions *singleConfig; //Only one config
     if(o) {                                                                 \
         SET_FROM_OPTION(out, o);                                            \
     }                                                                       \
+}while(0)
+#define get_array(optName, out, size) do{                                   \
+    struct Option* o = get_(singleConfig->options, optName);                \
+    if(o) {                                                                 \
+        SET_FROM_OPTION(out, o);                                            \
+    }                                                                       \
+    (size) = o->v_a.len;                                                    \
 }while(0)
 #define cleanConfigs() cleanConfig_(singleConfig)
 #endif
