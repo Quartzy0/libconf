@@ -168,6 +168,8 @@ void cleanOptions(struct Option **options);
                     char*: (o)->v_s,                                        \
                     bool: (o)->v_b,                                         \
                     bool*: (o)->v_a.a_b,                                    \
+                    long*: (o)->v_a.a_l,                                    \
+                    double*: (o)->v_a.a_d,                                  \
                     default: (o)->v_v);                                     \
 }while(0)
 

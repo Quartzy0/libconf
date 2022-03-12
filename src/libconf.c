@@ -211,7 +211,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 long tempL = strtol(start, &endPtr, 10);
                 if (endPtr == start) {
                     //error
-                    fprintf(stderr, "Error at option %s:%s: Invalid integer \n", file, optName);
+                    fprintf(stderr, "Error at option %s:%s: Invalid long \n", file, optName);
                     optOut->v_l = optOut->dv_l;
                 } else {
                     optOut->v_l = tempL;
@@ -345,6 +345,122 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 optOut->v_a.a_b = arr;
                 optOut->v_a.len = i;
                 optOut->valueSize = i * sizeof(bool);
+                break;
+            }
+            case ARRAY_LONG:
+            {
+                char *arrayStart = strchr(assignIndex + 1, '[');
+                if(!arrayStart || arrayStart > endValueIndex){
+                    fprintf(stderr, "Error at option %s:%s: Array must start on the same line as the option definition with [\n", file, optName);
+                    break;
+                }
+                char *arrayEnd = strchr(arrayStart + 1, ']');
+                if(!arrayEnd){
+                    fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
+                    break;
+                }
+
+                long *arr = malloc(sizeof(long) * ARRAY_ALLOCATION);
+                size_t i = 0;
+                size_t arraySize = ARRAY_ALLOCATION;
+                char *nextElement = arrayStart + 1;
+                char *currentElement = arrayStart + 1;
+                do{
+                    nextElement = strchr(nextElement + 1, ',');
+                    if(nextElement>arrayEnd || !nextElement) nextElement = arrayEnd;
+                    char *valueStart;
+                    trimnp(currentElement, nextElement, &valueStart);
+                    if(arraySize-2==i){
+                        long *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(long));
+                        if(!tmp){
+                            fprintf(stderr, "Error while reallocating memory for long array: %s\n", strerror(errno));
+                            free(arr);
+                            buffer = arrayEnd + 1;
+                            goto loopEndR;
+                        }
+                        arr = tmp;
+                    }
+                    char *endPtr = NULL;
+                    arr[i] = strtol(valueStart, &endPtr, 10);
+                    if (endPtr == valueStart) {
+                        //error
+                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid long: %s\n", file, optName, i, strerror(errno));
+                    }
+                    i++;
+                    currentElement = nextElement + 1;
+                }while(nextElement!=arrayEnd);
+
+                if(i!=arraySize){
+                    long *tmp = realloc(arr, i * sizeof(long));
+                    if(!tmp){
+                        fprintf(stderr, "Error while reallocating memory for long array: %s\n", strerror(errno));
+                        free(arr);
+                        buffer = arrayEnd + 1;
+                        goto loopEndR;
+                    }
+                    arr = tmp;
+                }
+                optOut->v_a.a_l = arr;
+                optOut->v_a.len = i;
+                optOut->valueSize = i * sizeof(long);
+                break;
+            }
+            case ARRAY_DOUBLE:
+            {
+                char *arrayStart = strchr(assignIndex + 1, '[');
+                if(!arrayStart || arrayStart > endValueIndex){
+                    fprintf(stderr, "Error at option %s:%s: Array must start on the same line as the option definition with [\n", file, optName);
+                    break;
+                }
+                char *arrayEnd = strchr(arrayStart + 1, ']');
+                if(!arrayEnd){
+                    fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
+                    break;
+                }
+
+                double *arr = malloc(sizeof(double) * ARRAY_ALLOCATION);
+                size_t i = 0;
+                size_t arraySize = ARRAY_ALLOCATION;
+                char *nextElement = arrayStart + 1;
+                char *currentElement = arrayStart + 1;
+                do{
+                    nextElement = strchr(nextElement + 1, ',');
+                    if(nextElement>arrayEnd || !nextElement) nextElement = arrayEnd;
+                    char *valueStart;
+                    trimnp(currentElement, nextElement, &valueStart);
+                    if(arraySize-2==i){
+                        double *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(double));
+                        if(!tmp){
+                            fprintf(stderr, "Error while reallocating memory for double array: %s\n", strerror(errno));
+                            free(arr);
+                            buffer = arrayEnd + 1;
+                            goto loopEndR;
+                        }
+                        arr = tmp;
+                    }
+                    char *endPtr = NULL;
+                    arr[i] = strtod(valueStart, &endPtr);
+                    if (endPtr == valueStart) {
+                        //error
+                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid double: %s\n", file, optName, i, strerror(errno));
+                    }
+                    i++;
+                    currentElement = nextElement + 1;
+                }while(nextElement!=arrayEnd);
+
+                if(i!=arraySize){
+                    double *tmp = realloc(arr, i * sizeof(double));
+                    if(!tmp){
+                        fprintf(stderr, "Error while reallocating memory for double array: %s\n", strerror(errno));
+                        free(arr);
+                        buffer = arrayEnd + 1;
+                        goto loopEndR;
+                    }
+                    arr = tmp;
+                }
+                optOut->v_a.a_d = arr;
+                optOut->v_a.len = i;
+                optOut->valueSize = i * sizeof(double);
                 break;
             }
         }
