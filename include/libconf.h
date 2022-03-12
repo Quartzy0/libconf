@@ -134,12 +134,12 @@ struct Option {
     struct Option *next; //Used as a linked list in hash map
 };
 
-struct ConfigOptions {
+typedef struct ConfigOptions {
     char *name; //Key
     char *file;
     struct Option **options;
     struct ConfigOptions *next; //Used as a linked list in hash map
-};
+} ConfigOptions;
 
 size_t optionCount;
 
@@ -171,124 +171,32 @@ void cleanOptions(struct Option **options);
                     default: (o)->v_v);                                     \
 }while(0)
 
-#ifdef MULTI_CONFIG
-extern struct ConfigOptions **configs; //Hash map of multiple configs
-#define generateDefault(confName) do{                                       \
-    struct ConfigOptions* c;                                                \
-    HASH_FIND(configs, confName, c);                                        \
-    if(!c){                                                                 \
-        fprintf(stderr, "Config '%s' not yet initialized", confName);       \
-        break;                                                              \
-    }                                                                       \
-    generateDefault_(c);                                                    \
-}while(0)
+#define generateDefault(config) generateDefault_(config)
 #ifdef AUTO_GENERATE
-#define initConfig(confName, file, count, options) do{ \
-    if(!configs) configs = malloc(sizeof(struct ConfigOptions*) * OPTION_HASHMAP_SIZE);\
-    struct ConfigOptions* c = NULL;                                         \
-    if(configs){                                                            \
-        HASH_FIND(configs, confName, c);                                    \
-        if(c){                                                              \
-            fprintf(stderr, "Config '%s' already initialized", confName);   \
-            break;                                                          \
-        }                                                                   \
-    }                                                                       \
-    initConfig_(&c, file, count, options);                                  \
-    c->name = strdup(confName);                                             \
-    HASH_ADD(configs, c);                                                   \
+#define initConfig(config, file, count, options) do{                        \
+    initConfig_(&(config), file, count, options);                           \
     FILE* fp = fopen(file, "r");                                            \
-    if(!fp) generateDefault_(c);                                            \
+    if(!fp) generateDefault(config);                                        \
     else fclose(fp);                                                        \
 }while(0)
 #else
-#define initConfig(confName, file, count, options) do{ \
-    if(!configs) configs = malloc(sizeof(struct ConfigOptions*) * OPTION_HASHMAP_SIZE);\
-    struct ConfigOptions* c = NULL;                                         \
-    if(configs){                                                            \
-        HASH_FIND(configs, confName, c);                                    \
-        if(c){                                                              \
-            fprintf(stderr, "Config '%s' already initialized", confName);   \
-            break;                                                          \
-        }                                                                   \
-    }                                                                       \
-    initConfig_(&c, file, count, options);                                  \
-    c->name = strdup(confName);                                             \
-    HASH_ADD(configs, c);                                                   \
+#define initConfig(config, file, count, options) do{                        \
+    initConfig_(config, file, count, options);                              \
 }while(0)
 #endif
-#define readConfig(confName) do{                                            \
-    struct ConfigOptions* c;                                                \
-    HASH_FIND(configs, confName, c);                                        \
-    if(!c){                                                                 \
-        fprintf(stderr, "Config '%s' not yet initialized", confName);       \
-        break;                                                              \
-    }                                                                       \
-    readConfig_(c);                                                         \
-}while(0)
-#define get(confName, optName, out) do{                                     \
-    struct ConfigOptions* c;                                                \
-    HASH_FIND(configs, confName, c);                                        \
-    if(!c){                                                                 \
-        fprintf(stderr, "Config '%s' not yet initialized", confName);       \
-        break;                                                              \
-    }                                                                       \
-    struct Option* o = get_(c->options, optName);                           \
-    if(o){                                                                  \
-        SET_FROM_OPTION(out, o);                                            \
-    }                                                                       \
-}while(0)
-#define get(confName, optName, out, size) do{                               \
-    struct ConfigOptions* c;                                                \
-    HASH_FIND(configs, confName, c);                                        \
-    if(!c){                                                                 \
-        fprintf(stderr, "Config '%s' not yet initialized", confName);       \
-        break;                                                              \
-    }                                                                       \
-    struct Option* o = get_(c->options, optName);                           \
-    if(o){                                                                  \
-        SET_FROM_OPTION(out, o);                                            \
-    }                                                                       \
-    (size) = o->v_a.len;                                                    \
-}while(0)
-#define cleanConfigs() do{                                                  \
-    struct ConfigOptions* c;                                                \
-    HASH_ITER(configs, c){                                                  \
-        cleanConfig_(c);                                                    \
-    }                                                                       \
-    free(configs);                                                          \
-}while(0)
-#else
-extern struct ConfigOptions *singleConfig; //Only one config
-#define generateDefault() generateDefault_(singleConfig)
-#ifdef AUTO_GENERATE
-#define initConfig(file, count, options) do{                                \
-    initConfig_(&singleConfig, file, count, options);                       \
-    singleConfig->name = NULL;                                              \
-    FILE* fp = fopen(file, "r");                                            \
-    if(!fp) generateDefault();                                              \
-    else fclose(fp);                                                        \
-}while(0)
-#else
-#define initConfig(file, count, options) do{                                \
-    initConfig_(&singleConfig, file, count, options);                       \
-    singleConfig->name = NULL;                                              \
-}while(0)
-#endif
-#define readConfig() readConfig_(singleConfig)
-#define get(optName, out) do{                                               \
-    struct Option* o = get_(singleConfig->options, optName);                \
+#define readConfig(config) readConfig_(config)
+#define get(config, optName, out) do{                                       \
+    struct Option* o = get_((config)->options, optName);                    \
     if(o) {                                                                 \
         SET_FROM_OPTION(out, o);                                            \
     }                                                                       \
 }while(0)
-#define get_array(optName, out, size) do{                                   \
-    struct Option* o = get_(singleConfig->options, optName);                \
+#define get_array(config, optName, out, size) do{                           \
+    struct Option* o = get_((config)->options, optName);                    \
     if(o) {                                                                 \
         SET_FROM_OPTION(out, o);                                            \
     }                                                                       \
     (size) = o->v_a.len;                                                    \
 }while(0)
-#define cleanConfigs() cleanConfig_(singleConfig)
-#endif
-
+#define cleanConfigs(config) cleanConfig_(config)
 #endif

@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <string.h>
+#include <glob.h>
 
 #ifndef _WIN32
 
@@ -13,15 +14,36 @@
 #include <Windows.h>
 #endif
 
-struct ConfigOptions **configs; //Hash map of multiple configs
-struct ConfigOptions *singleConfig; //Only one config
-
 //utility functions
 
 char *strchrnul_(char *s, char c) {
     if (*s == '\0' || *(s - 1) == '\0') return NULL;
     char *val = strchr(s, c);
     return !val ? s + strlen(s) - 1 : val;
+}
+
+//strrchr but the end pointer and the length are provided instead of the start pointer
+//searches backwards to find the last occurrence
+char *strrchr_(const char *end, size_t len, char c){
+    for (size_t i = 0; i < len; ++i) {
+        if(*(end-i)==c) return (char*) end-i;
+    }
+    return NULL;
+}
+
+//https://stackoverflow.com/a/146938/
+bool isFile(const char *path){
+    struct stat s;
+    int status;
+    if( (status = stat(path,&s)) == 0 )
+    {
+        return s.st_mode & S_IFREG;
+    }
+    else
+    {
+        fprintf(stderr, "Error: error when calling stat() function: %d", status);
+        return false;
+    }
 }
 
 size_t trimn(const char *in, size_t n, char **out) {
@@ -127,12 +149,12 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             if (*i == '=' && !assignIndex) {
                 assignIndex = i;
             }
-            if (*i == '#') {
+            if (*i == '/' && *(i+1) == '/') {
                 endValueIndex = i;
                 break;
             }
         }
-        if (!assignIndex) {
+        if (!assignIndex) { // If a '//' occurs before a '=', then assignIndex will be null
             buffer = lineEnd + 1;
             continue;
         }
@@ -154,7 +176,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 char *doubleStart = strchr(assignIndex + 1, '"');
                 char *singleStart = strchr(assignIndex + 1, '\'');
                 bool single = singleStart < doubleStart && singleStart;
-                if ((!single && !doubleStart) || (single ? singleStart > lineEnd : doubleStart > lineEnd)) {
+                if ((!single && !doubleStart) || (single ? singleStart > endValueIndex : doubleStart > endValueIndex)) {
                     fprintf(stderr,
                             "Error at option %s:%s: String must start on the same line as the option definition with ' or \"\n",
                             file, optName);
@@ -185,7 +207,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             case LONG: {
                 char *endPtr = NULL;
                 char *start = NULL;
-                trimnp(assignIndex + 1, lineEnd, &start);
+                trimnp(assignIndex + 1, endValueIndex, &start);
                 long tempL = strtol(start, &endPtr, 10);
                 if (endPtr == start) {
                     //error
@@ -200,7 +222,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             case DOUBLE: {
                 char *endPtr = NULL;
                 char *start = NULL;
-                trimnp(assignIndex + 1, lineEnd, &start);
+                trimnp(assignIndex + 1, endValueIndex, &start);
                 double tempD = strtod(start, &endPtr);
                 if (endPtr == start) {
                     //error
@@ -214,7 +236,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             }
             case BOOL: {
                 char *start = NULL;
-                trimnp(assignIndex + 1, lineEnd, &start);
+                trimnp(assignIndex + 1, endValueIndex, &start);
                 if (!strncasecmp(start, "true", 4) || !strncasecmp(start, "yes", 3)) {
                     optOut->v_b = true;
                     optOut->valueSize = sizeof(bool);
@@ -232,7 +254,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             }
             case COMPOUND: {
                 char *compoundStart = strchr(assignIndex + 1, '{');
-                if (!compoundStart || compoundStart > strchr(lineEnd + 1, '\n')) {
+                if (!compoundStart || compoundStart > endValueIndex) {
                     fprintf(stderr, "Error at option %s:%s: Compound must start with '{'\n", file, optName);
                     optOut->v_v = optOut->dv_v;
 
@@ -268,7 +290,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             }
             case ARRAY_BOOL: {
                 char *arrayStart = strchr(assignIndex + 1, '[');
-                if(!arrayStart || arrayStart > lineEnd){
+                if(!arrayStart || arrayStart > endValueIndex){
                     fprintf(stderr, "Error at option %s:%s: Array must start on the same line as the option definition with [\n", file, optName);
                     break;
                 }
@@ -335,6 +357,189 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
     }
 }
 
+size_t readFile(const char *filename, char **bufferOut){
+    size_t length;
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        fprintf(stderr, "Error: Can't open file '%s': '%s'\n", filename, strerror(errno));
+        return 0;
+    }
+
+    length = getFileSize(filename);
+    if (length == 0) {
+        fclose(fp);
+        return 0;
+    }
+
+    (*bufferOut) = malloc(length + 2);
+    if (!(*bufferOut)) {
+        fprintf(stderr, "Error: Can't allocate memory for reading file '%s': '%s'\n", filename, strerror(errno));
+        fclose(fp);
+        free((*bufferOut));
+        return 0;
+    }
+    if (!fread((*bufferOut), 1, length, fp)) {
+        fprintf(stderr, "Error: Can't read file '%s': '%s'\n", filename, strerror(errno));
+        fclose(fp);
+        free((*bufferOut));
+        return 0;
+    }
+    fclose(fp);
+
+    if((*bufferOut)[length-1]!='\n'){ //Ensure that string ends in new line (makes things nicer)
+        length++;
+        (*bufferOut)[length-1]='\n';
+    }
+    (*bufferOut)[length] = '\0'; //Must be null terminated
+    return length;
+}
+
+size_t preprocessor(char *bufferOriginal, size_t bufferOriginalLen, char **bufferOut, char *dirPath){
+    size_t dirPathLen = strlen(dirPath);
+    char *bufferO = malloc(bufferOriginalLen);
+    char *buffer = bufferO; // Increment this buffer in order to keep the original for realloc and measuring size
+    size_t bufferLen = bufferOriginalLen;
+    char *macroStart = bufferOriginal;
+    char *prevMacroEnd = bufferOriginal;
+    bool macroUsed = false;
+
+    while ((macroStart = strchr(macroStart, '#')) && macroStart - bufferOriginal < bufferOriginalLen) {
+        char *lineBegin = strrchr_(macroStart, prevMacroEnd - macroStart, '\n') + 1;
+        if(lineBegin==NULL+1) { // 1 was added to lineBegin, so it will be NULL + 1 if it would usually be NULL
+            lineBegin = prevMacroEnd;
+        }
+        for (;lineBegin<macroStart;lineBegin++) { //Macro has to be the only thing on the line
+            if(!isspace(*lineBegin)) goto eol;
+        }
+
+        char *lineEnd = strchr(macroStart+1, '\n');
+        if(!(strncmp(macroStart+1, "include", 7))){
+            char *pathStart = memchr(macroStart+7, '"', lineEnd-macroStart);
+            if(!pathStart){
+                fprintf(stderr, "Error: macro #include must have a path specified in '\"'\n");
+                goto eol;
+            }
+            pathStart++;
+            char *pathEnd = memchr(pathStart, '"', lineEnd-(pathStart));
+            if(!pathEnd){
+                fprintf(stderr, "Error: macro #include must have a path specified in '\"'\n");
+                goto eol;
+            }
+            char *fileName = malloc(((pathEnd-pathStart+dirPathLen + 1) * sizeof(char)));
+            memcpy(fileName, dirPath, dirPathLen);
+            memcpy(fileName+dirPathLen, pathStart, pathEnd-pathStart);
+            fileName[pathEnd-pathStart+dirPathLen] = '\0'; //Must be null-terminated
+
+            glob_t glob_result;
+            memset(&glob_result, 0, sizeof(glob_result));
+
+            int glob_return = glob(fileName, GLOB_TILDE, NULL, &glob_result);
+
+            switch (glob_return) {
+                case GLOB_NOSPACE:
+                {
+                    fprintf(stderr, "Error: glob() failed with return code GLOB_NOSPACE (Out of memory)\n");
+                    globfree(&glob_result);
+                    goto eol;
+                }
+                case GLOB_ABORTED:
+                {
+                    fprintf(stderr, "Error: glob() failed with return code GLOB_ABORTED (Read error)\n");
+                    globfree(&glob_result);
+                    goto eol;
+                }
+                case GLOB_NOMATCH:
+                {
+                    fprintf(stderr, "Error: No files found matching pattern '%s'\n", fileName);
+                    globfree(&glob_result);
+                    goto eol;
+                }
+                default:
+                {
+                    break;
+                }
+            }
+
+            if(buffer - bufferO + (macroStart - prevMacroEnd) >= bufferLen){
+                char *tmp = realloc(bufferO, bufferLen + (macroStart - prevMacroEnd) + 1); // +1 because why not
+                if(!tmp){
+                    fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n", strerror(errno));
+                    goto eol;
+                }
+                bufferLen+= (macroStart - prevMacroEnd) + 1;
+            }
+
+            memcpy(buffer, prevMacroEnd, macroStart - prevMacroEnd); // Copy everything leading up to the macro into new buffer
+            buffer+= macroStart - prevMacroEnd;
+
+            for (int i = 0; i < glob_result.gl_pathc; ++i){
+                if(!isFile(glob_result.gl_pathv[i]))continue; //Continue if it's not a file
+                char *fileBuf = NULL;
+                size_t len = readFile(glob_result.gl_pathv[i], &fileBuf);
+                if(!len){
+                    fprintf(stderr, "Error: unable to read file: %s\n", glob_result.gl_pathv[i]);
+                    continue;
+                }
+
+                //Get path to the parent directory used to find other files which may be included
+                char *parentDirI = strrchr(fileName, '/') + 1;
+                char *parentDir = strndup(fileName, parentDirI-fileName);
+
+                char *fileProcessed = NULL;
+                size_t len1 = preprocessor(fileBuf, len, &fileProcessed, parentDir);
+
+                // First make sure new buffer has enough space
+                if(buffer - bufferO + len >= bufferLen){
+                    char *tmp = realloc(bufferO, bufferLen + len + 1); // +1 because why not
+                    if(!tmp){
+                        fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n", strerror(errno));
+                        goto eol;
+                    }
+                    size_t offset = buffer-bufferO;
+                    bufferO = tmp;
+                    buffer = bufferO + offset;
+                    bufferLen+= len + 1;
+                }
+
+
+                memcpy(buffer, fileProcessed, len1); // Copy everything from included file into new buffer
+                buffer+=len1;
+            }
+
+            globfree(&glob_result);
+
+            prevMacroEnd = lineEnd;
+            macroUsed = true;
+        }
+        eol:
+        macroStart++;
+    }
+    if(!macroUsed){
+        (*bufferOut) = bufferOriginal;
+        return bufferOriginalLen;
+    }
+
+    // First make sure new buffer has enough space
+    if((buffer-bufferO)+((bufferOriginal+bufferOriginalLen)-prevMacroEnd) >= bufferLen){
+        char *tmp = realloc(bufferO, (buffer-bufferO)+((bufferOriginal+bufferOriginalLen)-prevMacroEnd) + 1); // +1 because why not
+        if(!tmp){
+            fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n", strerror(errno));
+            return buffer-bufferO;
+        }
+        size_t offset = buffer-bufferO;
+        bufferO = tmp;
+        buffer = bufferO + offset;
+    }
+
+    memcpy(buffer, prevMacroEnd, ((bufferOriginal+bufferOriginalLen)-prevMacroEnd)); // Copy everything leading up to the macro into new buffer
+    buffer+= ((bufferOriginal+bufferOriginalLen)-prevMacroEnd);
+
+    (*bufferOut) = bufferO;
+
+    return buffer-bufferO;
+}
+
+
 void readConfig_(struct ConfigOptions *config) {
     if (!config) {
         fprintf(stderr, "Error: Config '%s' not yet initialized\n", config->file);
@@ -342,39 +547,26 @@ void readConfig_(struct ConfigOptions *config) {
     }
 
     char *bufferOriginal = NULL;
-    size_t length;
-    FILE *fp = fopen(config->file, "r");
-    if (!fp) {
-        fprintf(stderr, "Error: Can't open file '%s': '%s'\n", config->file, strerror(errno));
-        return;
-    }
+    size_t length = readFile(config->file, &bufferOriginal);
 
-    length = getFileSize(config->file);
-    if (length == 0) {
-        fclose(fp);
-        return;
-    }
+    //Get path to the parent directory used to find other files which may be included
+    char *parentDirI = strrchr(config->file, '/') + 1;
+    char *parentDir = strndup(config->file, parentDirI-config->file);
 
-    bufferOriginal = malloc(length + 1);
-    if (!bufferOriginal) {
-        fprintf(stderr, "Error: Can't allocate memory for reading file '%s': '%s'\n", config->file, strerror(errno));
-        fclose(fp);
-        free(bufferOriginal);
-        return;
-    }
-    if (!fread(bufferOriginal, 1, length, fp)) {
-        fprintf(stderr, "Error: Can't read file '%s': '%s'\n", config->file, strerror(errno));
-        fclose(fp);
-        free(bufferOriginal);
-        return;
-    }
+    //Process macros before parsing file
+    char *buffer = NULL;
+    size_t len = preprocessor(bufferOriginal, length, &buffer, parentDir);
+
+#ifndef NDEBUG
+    FILE *fp = fopen("debug/preprocessor-output.txt", "w");
+    fwrite(buffer, sizeof(char), len, fp);
     fclose(fp);
+#endif
 
-    bufferOriginal[length] = '\0'; //Must be null terminated
-
-    parseConfigWhole(config->options, config->file, bufferOriginal, length);
+    parseConfigWhole(config->options, config->file, buffer, len);
 
     free(bufferOriginal);
+    free(buffer);
 }
 
 struct Option *get_(struct Option **options, char *optName) {
@@ -440,7 +632,8 @@ char *generateDef(struct Option **options, char **obuffer, size_t bufferOffset, 
                 char *commentEnd = comment;
                 while ((commentEnd = strchr(commentEnd + 1, '\n'))) {
                     addIndent(buf, indent);
-                    *(buf++) = '#';
+                    *(buf++) = '/';
+                    *(buf++) = '/';
                     size_t commentLen = commentEnd - comment;
                     strncpy(buf, comment, commentLen);
                     buf += commentLen;
@@ -449,7 +642,8 @@ char *generateDef(struct Option **options, char **obuffer, size_t bufferOffset, 
                     comment = commentEnd + 1;
                 }
                 addIndent(buf, indent);
-                *(buf++) = '#';
+                *(buf++) = '/';
+                *(buf++) = '/';
                 size_t commentLen = strlen(comment);
                 strncpy(buf, comment, commentLen);
                 buf += commentLen;
