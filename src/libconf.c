@@ -24,23 +24,20 @@ char *strchrnul_(char *s, char c) {
 
 //strrchr but the end pointer and the length are provided instead of the start pointer
 //searches backwards to find the last occurrence
-char *strrchr_(const char *end, size_t len, char c){
+char *strrchr_(const char *end, size_t len, char c) {
     for (size_t i = 0; i < len; ++i) {
-        if(*(end-i)==c) return (char*) end-i;
+        if (*(end - i) == c) return (char *) end - i;
     }
     return NULL;
 }
 
 //https://stackoverflow.com/a/146938/
-bool isFile(const char *path){
+bool isFile(const char *path) {
     struct stat s;
     int status;
-    if( (status = stat(path,&s)) == 0 )
-    {
+    if ((status = stat(path, &s)) == 0) {
         return s.st_mode & S_IFREG;
-    }
-    else
-    {
+    } else {
         fprintf(stderr, "Error: error when calling stat() function: %d", status);
         return false;
     }
@@ -149,7 +146,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             if (*i == '=' && !assignIndex) {
                 assignIndex = i;
             }
-            if (*i == '/' && *(i+1) == '/') {
+            if (*i == '/' && *(i + 1) == '/') {
                 endValueIndex = i;
                 break;
             }
@@ -290,12 +287,14 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
             }
             case ARRAY_BOOL: {
                 char *arrayStart = strchr(assignIndex + 1, '[');
-                if(!arrayStart || arrayStart > endValueIndex){
-                    fprintf(stderr, "Error at option %s:%s: Array must start on the same line as the option definition with [\n", file, optName);
+                if (!arrayStart || arrayStart > endValueIndex) {
+                    fprintf(stderr,
+                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
+                            file, optName);
                     break;
                 }
                 char *arrayEnd = strchr(arrayStart + 1, ']');
-                if(!arrayEnd){
+                if (!arrayEnd) {
                     fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
                     break;
                 }
@@ -305,14 +304,14 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 size_t arraySize = ARRAY_ALLOCATION;
                 char *nextElement = arrayStart + 1;
                 char *currentElement = arrayStart + 1;
-                do{
+                do {
                     nextElement = strchr(nextElement + 1, ',');
-                    if(nextElement>arrayEnd || !nextElement) nextElement = arrayEnd;
+                    if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
                     char *valueStart;
                     trimnp(currentElement, nextElement, &valueStart);
-                    if(arraySize-2==i){
+                    if (arraySize - 2 == i) {
                         bool *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(bool));
-                        if(!tmp){
+                        if (!tmp) {
                             fprintf(stderr, "Error while reallocating memory for bool array: %s\n", strerror(errno));
                             free(arr);
                             buffer = arrayEnd + 1;
@@ -321,7 +320,8 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                         arr = tmp;
                     }
                     arr[i] = !strncasecmp(valueStart, "true", 4) || !strncasecmp(valueStart, "yes", 3);
-                    if (!arr[i] && !(!strncasecmp(valueStart, "false", 5) || !strncasecmp(valueStart, "no", 2))) { // If option is not true or false
+                    if (!arr[i] && !(!strncasecmp(valueStart, "false", 5) ||
+                                     !strncasecmp(valueStart, "no", 2))) { // If option is not true or false
                         fprintf(stderr, "Error at option %s:%s[%zu]: Invalid boolean. Must be true, false, yes or no\n",
                                 file, optName, i);
                         free(arr);
@@ -330,11 +330,11 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                     }
                     i++;
                     currentElement = nextElement + 1;
-                }while(nextElement!=arrayEnd);
+                } while (nextElement != arrayEnd);
 
-                if(i!=arraySize){
+                if (i != arraySize) {
                     bool *tmp = realloc(arr, i * sizeof(bool));
-                    if(!tmp){
+                    if (!tmp) {
                         fprintf(stderr, "Error while reallocating memory for bool array: %s\n", strerror(errno));
                         free(arr);
                         buffer = arrayEnd + 1;
@@ -347,15 +347,16 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 optOut->valueSize = i * sizeof(bool);
                 break;
             }
-            case ARRAY_LONG:
-            {
+            case ARRAY_LONG: {
                 char *arrayStart = strchr(assignIndex + 1, '[');
-                if(!arrayStart || arrayStart > endValueIndex){
-                    fprintf(stderr, "Error at option %s:%s: Array must start on the same line as the option definition with [\n", file, optName);
+                if (!arrayStart || arrayStart > endValueIndex) {
+                    fprintf(stderr,
+                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
+                            file, optName);
                     break;
                 }
                 char *arrayEnd = strchr(arrayStart + 1, ']');
-                if(!arrayEnd){
+                if (!arrayEnd) {
                     fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
                     break;
                 }
@@ -365,14 +366,14 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 size_t arraySize = ARRAY_ALLOCATION;
                 char *nextElement = arrayStart + 1;
                 char *currentElement = arrayStart + 1;
-                do{
+                do {
                     nextElement = strchr(nextElement + 1, ',');
-                    if(nextElement>arrayEnd || !nextElement) nextElement = arrayEnd;
+                    if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
                     char *valueStart;
                     trimnp(currentElement, nextElement, &valueStart);
-                    if(arraySize-2==i){
+                    if (arraySize - 2 == i) {
                         long *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(long));
-                        if(!tmp){
+                        if (!tmp) {
                             fprintf(stderr, "Error while reallocating memory for long array: %s\n", strerror(errno));
                             free(arr);
                             buffer = arrayEnd + 1;
@@ -384,15 +385,16 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                     arr[i] = strtol(valueStart, &endPtr, 10);
                     if (endPtr == valueStart) {
                         //error
-                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid long: %s\n", file, optName, i, strerror(errno));
+                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid long: %s\n", file, optName, i,
+                                strerror(errno));
                     }
                     i++;
                     currentElement = nextElement + 1;
-                }while(nextElement!=arrayEnd);
+                } while (nextElement != arrayEnd);
 
-                if(i!=arraySize){
+                if (i != arraySize) {
                     long *tmp = realloc(arr, i * sizeof(long));
-                    if(!tmp){
+                    if (!tmp) {
                         fprintf(stderr, "Error while reallocating memory for long array: %s\n", strerror(errno));
                         free(arr);
                         buffer = arrayEnd + 1;
@@ -405,15 +407,16 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 optOut->valueSize = i * sizeof(long);
                 break;
             }
-            case ARRAY_DOUBLE:
-            {
+            case ARRAY_DOUBLE: {
                 char *arrayStart = strchr(assignIndex + 1, '[');
-                if(!arrayStart || arrayStart > endValueIndex){
-                    fprintf(stderr, "Error at option %s:%s: Array must start on the same line as the option definition with [\n", file, optName);
+                if (!arrayStart || arrayStart > endValueIndex) {
+                    fprintf(stderr,
+                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
+                            file, optName);
                     break;
                 }
                 char *arrayEnd = strchr(arrayStart + 1, ']');
-                if(!arrayEnd){
+                if (!arrayEnd) {
                     fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
                     break;
                 }
@@ -423,14 +426,14 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 size_t arraySize = ARRAY_ALLOCATION;
                 char *nextElement = arrayStart + 1;
                 char *currentElement = arrayStart + 1;
-                do{
+                do {
                     nextElement = strchr(nextElement + 1, ',');
-                    if(nextElement>arrayEnd || !nextElement) nextElement = arrayEnd;
+                    if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
                     char *valueStart;
                     trimnp(currentElement, nextElement, &valueStart);
-                    if(arraySize-2==i){
+                    if (arraySize - 2 == i) {
                         double *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(double));
-                        if(!tmp){
+                        if (!tmp) {
                             fprintf(stderr, "Error while reallocating memory for double array: %s\n", strerror(errno));
                             free(arr);
                             buffer = arrayEnd + 1;
@@ -442,15 +445,16 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                     arr[i] = strtod(valueStart, &endPtr);
                     if (endPtr == valueStart) {
                         //error
-                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid double: %s\n", file, optName, i, strerror(errno));
+                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid double: %s\n", file, optName, i,
+                                strerror(errno));
                     }
                     i++;
                     currentElement = nextElement + 1;
-                }while(nextElement!=arrayEnd);
+                } while (nextElement != arrayEnd);
 
-                if(i!=arraySize){
+                if (i != arraySize) {
                     double *tmp = realloc(arr, i * sizeof(double));
-                    if(!tmp){
+                    if (!tmp) {
                         fprintf(stderr, "Error while reallocating memory for double array: %s\n", strerror(errno));
                         free(arr);
                         buffer = arrayEnd + 1;
@@ -473,7 +477,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
     }
 }
 
-size_t readFile(const char *filename, char **bufferOut){
+size_t readFile(const char *filename, char **bufferOut) {
     size_t length;
     FILE *fp = fopen(filename, "r");
     if (!fp) {
@@ -502,15 +506,15 @@ size_t readFile(const char *filename, char **bufferOut){
     }
     fclose(fp);
 
-    if((*bufferOut)[length-1]!='\n'){ //Ensure that string ends in new line (makes things nicer)
+    if ((*bufferOut)[length - 1] != '\n') { //Ensure that string ends in new line (makes things nicer)
         length++;
-        (*bufferOut)[length-1]='\n';
+        (*bufferOut)[length - 1] = '\n';
     }
     (*bufferOut)[length] = '\0'; //Must be null terminated
     return length;
 }
 
-size_t preprocessor(char *bufferOriginal, size_t bufferOriginalLen, char **bufferOut, char *dirPath){
+size_t preprocessor(char *bufferOriginal, size_t bufferOriginalLen, char **bufferOut, char *dirPath) {
     size_t dirPathLen = strlen(dirPath);
     char *bufferO = malloc(bufferOriginalLen);
     char *buffer = bufferO; // Increment this buffer in order to keep the original for realloc and measuring size
@@ -521,30 +525,30 @@ size_t preprocessor(char *bufferOriginal, size_t bufferOriginalLen, char **buffe
 
     while ((macroStart = strchr(macroStart, '#')) && macroStart - bufferOriginal < bufferOriginalLen) {
         char *lineBegin = strrchr_(macroStart, prevMacroEnd - macroStart, '\n') + 1;
-        if(lineBegin==NULL+1) { // 1 was added to lineBegin, so it will be NULL + 1 if it would usually be NULL
+        if (lineBegin == NULL + 1) { // 1 was added to lineBegin, so it will be NULL + 1 if it would usually be NULL
             lineBegin = prevMacroEnd;
         }
-        for (;lineBegin<macroStart;lineBegin++) { //Macro has to be the only thing on the line
-            if(!isspace(*lineBegin)) goto eol;
+        for (; lineBegin < macroStart; lineBegin++) { //Macro has to be the only thing on the line
+            if (!isspace(*lineBegin)) goto eol;
         }
 
-        char *lineEnd = strchr(macroStart+1, '\n');
-        if(!(strncmp(macroStart+1, "include", 7))){
-            char *pathStart = memchr(macroStart+7, '"', lineEnd-macroStart);
-            if(!pathStart){
+        char *lineEnd = strchr(macroStart + 1, '\n');
+        if (!(strncmp(macroStart + 1, "include", 7))) {
+            char *pathStart = memchr(macroStart + 7, '"', lineEnd - macroStart);
+            if (!pathStart) {
                 fprintf(stderr, "Error: macro #include must have a path specified in '\"'\n");
                 goto eol;
             }
             pathStart++;
-            char *pathEnd = memchr(pathStart, '"', lineEnd-(pathStart));
-            if(!pathEnd){
+            char *pathEnd = memchr(pathStart, '"', lineEnd - (pathStart));
+            if (!pathEnd) {
                 fprintf(stderr, "Error: macro #include must have a path specified in '\"'\n");
                 goto eol;
             }
-            char *fileName = malloc(((pathEnd-pathStart+dirPathLen + 1) * sizeof(char)));
+            char *fileName = malloc(((pathEnd - pathStart + dirPathLen + 1) * sizeof(char)));
             memcpy(fileName, dirPath, dirPathLen);
-            memcpy(fileName+dirPathLen, pathStart, pathEnd-pathStart);
-            fileName[pathEnd-pathStart+dirPathLen] = '\0'; //Must be null-terminated
+            memcpy(fileName + dirPathLen, pathStart, pathEnd - pathStart);
+            fileName[pathEnd - pathStart + dirPathLen] = '\0'; //Must be null-terminated
 
             glob_t glob_result;
             memset(&glob_result, 0, sizeof(glob_result));
@@ -552,74 +556,73 @@ size_t preprocessor(char *bufferOriginal, size_t bufferOriginalLen, char **buffe
             int glob_return = glob(fileName, GLOB_TILDE, NULL, &glob_result);
 
             switch (glob_return) {
-                case GLOB_NOSPACE:
-                {
+                case GLOB_NOSPACE: {
                     fprintf(stderr, "Error: glob() failed with return code GLOB_NOSPACE (Out of memory)\n");
                     globfree(&glob_result);
                     goto eol;
                 }
-                case GLOB_ABORTED:
-                {
+                case GLOB_ABORTED: {
                     fprintf(stderr, "Error: glob() failed with return code GLOB_ABORTED (Read error)\n");
                     globfree(&glob_result);
                     goto eol;
                 }
-                case GLOB_NOMATCH:
-                {
+                case GLOB_NOMATCH: {
                     fprintf(stderr, "Error: No files found matching pattern '%s'\n", fileName);
                     globfree(&glob_result);
                     goto eol;
                 }
-                default:
-                {
+                default: {
                     break;
                 }
             }
 
-            if(buffer - bufferO + (macroStart - prevMacroEnd) >= bufferLen){
+            if (buffer - bufferO + (macroStart - prevMacroEnd) >= bufferLen) {
                 char *tmp = realloc(bufferO, bufferLen + (macroStart - prevMacroEnd) + 1); // +1 because why not
-                if(!tmp){
-                    fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n", strerror(errno));
+                if (!tmp) {
+                    fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n",
+                            strerror(errno));
                     goto eol;
                 }
-                bufferLen+= (macroStart - prevMacroEnd) + 1;
+                bufferLen += (macroStart - prevMacroEnd) + 1;
             }
 
-            memcpy(buffer, prevMacroEnd, macroStart - prevMacroEnd); // Copy everything leading up to the macro into new buffer
-            buffer+= macroStart - prevMacroEnd;
+            memcpy(buffer, prevMacroEnd,
+                   macroStart - prevMacroEnd); // Copy everything leading up to the macro into new buffer
+            buffer += macroStart - prevMacroEnd;
 
-            for (int i = 0; i < glob_result.gl_pathc; ++i){
-                if(!isFile(glob_result.gl_pathv[i]))continue; //Continue if it's not a file
+            for (int i = 0; i < glob_result.gl_pathc; ++i) {
+                if (!isFile(glob_result.gl_pathv[i]))continue; //Continue if it's not a file
                 char *fileBuf = NULL;
                 size_t len = readFile(glob_result.gl_pathv[i], &fileBuf);
-                if(!len){
+                if (!len) {
                     fprintf(stderr, "Error: unable to read file: %s\n", glob_result.gl_pathv[i]);
                     continue;
                 }
 
                 //Get path to the parent directory used to find other files which may be included
                 char *parentDirI = strrchr(fileName, '/') + 1;
-                char *parentDir = strndup(fileName, parentDirI-fileName);
+                char *parentDir = strndup(fileName, parentDirI - fileName);
 
                 char *fileProcessed = NULL;
                 size_t len1 = preprocessor(fileBuf, len, &fileProcessed, parentDir);
 
                 // First make sure new buffer has enough space
-                if(buffer - bufferO + len >= bufferLen){
+                if (buffer - bufferO + len >= bufferLen) {
                     char *tmp = realloc(bufferO, bufferLen + len + 1); // +1 because why not
-                    if(!tmp){
-                        fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n", strerror(errno));
+                    if (!tmp) {
+                        fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n",
+                                strerror(errno));
                         goto eol;
                     }
-                    size_t offset = buffer-bufferO;
+                    size_t offset = buffer - bufferO;
                     bufferO = tmp;
                     buffer = bufferO + offset;
-                    bufferLen+= len + 1;
+                    bufferLen += len + 1;
                 }
 
 
                 memcpy(buffer, fileProcessed, len1); // Copy everything from included file into new buffer
-                buffer+=len1;
+                buffer += len1;
             }
 
             globfree(&glob_result);
@@ -630,29 +633,32 @@ size_t preprocessor(char *bufferOriginal, size_t bufferOriginalLen, char **buffe
         eol:
         macroStart++;
     }
-    if(!macroUsed){
+    if (!macroUsed) {
         (*bufferOut) = bufferOriginal;
         return bufferOriginalLen;
     }
 
     // First make sure new buffer has enough space
-    if((buffer-bufferO)+((bufferOriginal+bufferOriginalLen)-prevMacroEnd) >= bufferLen){
-        char *tmp = realloc(bufferO, (buffer-bufferO)+((bufferOriginal+bufferOriginalLen)-prevMacroEnd) + 1); // +1 because why not
-        if(!tmp){
-            fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n", strerror(errno));
-            return buffer-bufferO;
+    if ((buffer - bufferO) + ((bufferOriginal + bufferOriginalLen) - prevMacroEnd) >= bufferLen) {
+        char *tmp = realloc(bufferO, (buffer - bufferO) + ((bufferOriginal + bufferOriginalLen) - prevMacroEnd) +
+                                     1); // +1 because why not
+        if (!tmp) {
+            fprintf(stderr, "Error: unable to reallocate more memory for macro processing buffer: %s\n",
+                    strerror(errno));
+            return buffer - bufferO;
         }
-        size_t offset = buffer-bufferO;
+        size_t offset = buffer - bufferO;
         bufferO = tmp;
         buffer = bufferO + offset;
     }
 
-    memcpy(buffer, prevMacroEnd, ((bufferOriginal+bufferOriginalLen)-prevMacroEnd)); // Copy everything leading up to the macro into new buffer
-    buffer+= ((bufferOriginal+bufferOriginalLen)-prevMacroEnd);
+    memcpy(buffer, prevMacroEnd, ((bufferOriginal + bufferOriginalLen) -
+                                  prevMacroEnd)); // Copy everything leading up to the macro into new buffer
+    buffer += ((bufferOriginal + bufferOriginalLen) - prevMacroEnd);
 
     (*bufferOut) = bufferO;
 
-    return buffer-bufferO;
+    return buffer - bufferO;
 }
 
 
@@ -667,7 +673,7 @@ void readConfig_(struct ConfigOptions *config) {
 
     //Get path to the parent directory used to find other files which may be included
     char *parentDirI = strrchr(config->file, '/') + 1;
-    char *parentDir = strndup(config->file, parentDirI-config->file);
+    char *parentDir = strndup(config->file, parentDirI - config->file);
 
     //Process macros before parsing file
     char *buffer = NULL;
