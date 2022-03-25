@@ -1,96 +1,104 @@
-#define AUTO_GENERATE
-
-#include "libconf.h"
+#include "../include/libconf.h"
 #include "timer.h"
 
 int main() {
-    struct OptionOutline compOpts2[4] = {
-            {"lol",     LONG,         "no i disagrre", .dv_l=12},
-            {"whyyy",   TEXT,         "and another one", .dv_s="nother one!"},
-            {"longboi", ARRAY_LONG,   "what do I even put here anymore :(((((((("},
-            {"doublea", ARRAY_DOUBLE, ":)"}
-    };
-    struct OptionOutline compOptions[3] = {
-            {"test",           TEXT,     "jaja", .dv_s="very funny default value"},
-            {"noyes",          BOOL,     "jerrry", .dv_b=false},
-            {"compound_test2", COMPOUND, "lolanotherone", .dv_v=compOpts2, 4}
-    };
-    struct OptionOutline options[5] = {
-            {"joe",           LONG,       "Hello world!\nyoe", 12},
-            {"mama",          TEXT,       "This is a comment too!", .dv_s="Wooooooo!!!\nNow this is some serious multi line creip"},
-            {"haha",          BOOL,       "Funny bool test", .dv_b=true},
-            {"bruh",          ARRAY_BOOL, "Funny man"},
-            {"compound_test", COMPOUND,   "lolllllllu", .dv_v=compOptions, 3}
-    };
-    struct OptionOutline testOpt = {"test", TEXT, "Long text be like\nwoooowooo\nscarrryyyy", .dv_s="lipsum"};
-
     TIMER_START(config);
+
     TIMER_START(init);
-    ConfigOptions *config;
-    initConfig(config, "debug/test.config", 5, options);
+    Option **config;
+    Option **configM;
+
+    INIT_CONFIG(config);
+    INIT_CONFIG(configM);
+
+    ADD_OPT_LONG(configM, "breh", 12);
+//    ADD_OPT_COMPOUND(config, "man", configM);
+    ADD_OPT_DOUBLE(config, "dubl", 32.2);
+    ADD_OPT_STR(config, "str", "test");
+    ADD_OPT_BOOL(config, "bl", false);
+
+    long arr_def[] = {33, 22, 44};
+    ADD_OPT_ARRAY_LONG(configM, "arr", arr_def);
+
+    double arrd_def[] = {55.0122, 233.23};
+    ADD_OPT_ARRAY_DOUBLE(configM, "arrd", arrd_def);
+
+    bool arrb_def[] = {true, false};
+    ADD_OPT_ARRAY_BOOL(configM, "arrb", arrb_def);
+
+    char *arrs_def[] = {"fakse", "yes", "falssse"};
+    ADD_OPT_ARRAY_STR(config, "arrs", arrs_def, 3);
+
+    Option **arr_opt_templ;
+    INIT_CONFIG(arr_opt_templ);
+    ADD_OPT_STR(arr_opt_templ, "ll", "lolllll");
+    ADD_OPT_ARRAY_COMPOUND(config, "arrc", configM, NULL);
     TIMER_END(init);
 
     TIMER_START(read);
-    readConfig(config);
+    readConfig(config, "debug/test.config");
     TIMER_END(read);
 
     TIMER_START(get);
-    int joe = 0;
-    get(config, "joe", &joe);
-    printf("joe is: %d\n", joe);
+    double dubl = 0;
+    get(config, "dubl", &dubl);
+    printf("dubl is: %f\n", dubl);
 
-    char *mama = NULL;
-    get(config, "mama", &mama);
-    printf("mama is: %s\n", mama);
+    char *str = NULL;
+    get(config, "str", &str);
+    printf("str is: %s\n", str);
 
-    bool haha = NULL;
-    get(config, "haha", &haha);
-    printf("haha is: %s\n", haha ? "true" : "false");
+    bool bl = NULL;
+    get(config, "bl", &bl);
+    printf("bl is: %s\n", bl ? "true" : "false");
 
-    bool noyes = NULL;
-    get(config, "compound_test.noyes", &noyes);
-    printf("noyes is: %s\n", noyes ? "true" : "false");
 
-    char *test = NULL;
-    get(config, "compound_test.test", &test);
-    printf("test is: %s\n", test);
+    char **str_arr;
+    size_t str_arr_len = 0;
+    get_array(config, "arrs", &str_arr, str_arr_len);
 
-    char *whyyy = NULL;
-    get(config, "compound_test.compound_test2.whyyy", &whyyy);
-    printf("whyyy is: %s\n", whyyy);
-
-    int lol = 0;
-    get(config, "compound_test.compound_test2.lol", &lol);
-    printf("lol is: %d\n", lol);
-
-    bool *bool_arr;
-    size_t bool_len = 0;
-    get_array(config, "bruh", &bool_arr, bool_len);
-
-    for (int i = 0; i < bool_len; ++i) {
-        printf("bruh[%d]=%d\n", i, bool_arr[i]);
+    for (int i = 0; i < str_arr_len; ++i) {
+        printf("arrs[%d]=%s\n", i, str_arr[i]);
     }
 
-    long *long_arr;
-    size_t long_len = 0;
-    get_array(config, "compound_test.compound_test2.longboi", &long_arr, long_len);
+    Option ***opts_arr;
+    size_t opts_arr_len = 0;
+    get_array(config, "arrc", &opts_arr, opts_arr_len);
+    printf("opts_arr length is %zu\n", opts_arr_len);
+    for (int i = 0; i < opts_arr_len; ++i) {
+        bool *bool_arr;
+        size_t bool_len = 0;
+        get_array(opts_arr[i], "arrb", &bool_arr, bool_len);
 
-    for (int i = 0; i < long_len; ++i) {
-        printf("longboi[%d]=%ld\n", i, long_arr[i]);
-    }
+        for (int j = 0; j < bool_len; ++j) {
+            printf("arrc[%d].arrb[%d]=%s\n", i, j, bool_arr[j] ? "true" : "false");
+        }
 
-    double *double_arr;
-    size_t double_len = 0;
-    get_array(config, "compound_test.compound_test2.doublea", &double_arr, double_len);
+        long *arr;
+        size_t arr_len = 0;
+        get_array(opts_arr[i], "arr", &arr, arr_len);
 
-    for (int i = 0; i < double_len; ++i) {
-        printf("doublea[%d]=%f\n", i, double_arr[i]);
+        for (int j = 0; j < arr_len; ++j) {
+            printf("arrc[%d].arr[%d]=%ld\n", i, j, arr[j]);
+        }
+
+        double *double_arr;
+        size_t double_len = 0;
+        get_array(opts_arr[i], "arrd", &double_arr, double_len);
+
+        for (int j = 0; j < double_len; ++j) {
+            printf("arrc[%d].arrd[%d]=%f\n", i, j, double_arr[j]);
+        }
+
+        int breh = 0;
+        get(opts_arr[i], "breh", &breh);
+        printf("arrc[%d].breh is: %d\n", i, breh);
     }
 
     TIMER_END(get);
 
     TIMER_START(clean);
-    cleanConfigs(config);
+    cleanOptions(config);
     TIMER_END(clean);
     TIMER_END(config);
 }

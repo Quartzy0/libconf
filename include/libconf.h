@@ -6,9 +6,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define NEW_CONFIG_BUFFER_SIZE 1024*1024 //1MB
-#define NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT 256 //bytes
-#define NEW_CONFIG_RANDOM_THRESHOLD 200 //bytes
 #define ARRAY_ALLOCATION 20 //elements in array (size in bytes depends on array type)
 
 /* These macros use decltype or the earlier __typeof GNU extension.
@@ -38,34 +35,34 @@
 #define B 76963 /* another prime */
 #define FIRSTH 37 /* also prime */
 
-#define HASH_ADD(hashmap, value) do{            \
-    unsigned hash = FIRSTH;                     \
-    char *key = (value)->name;                  \
-    while (*key) {                              \
-        hash = (hash * A) ^ (key[0] * B);       \
-        key++;                                  \
-    }                                           \
-    hash %= OPTION_HASHMAP_SIZE;                \
-                                                \
-    DECLTYPE(hashmap) next = &(hashmap)[hash];  \
-    if (*next)                                  \
-        while (*(next = &((*next)->next))) {}   \
-    *next = value;                              \
+#define HASH_ADD(hashmap, value) do{                            \
+    unsigned hash = FIRSTH;                                     \
+    char *key = (value)->name;                                  \
+    while (*key) {                                              \
+        hash = (hash * A) ^ (key[0] * B);                       \
+        key++;                                                  \
+    }                                                           \
+    hash %= OPTION_HASHMAP_SIZE;                                \
+                                                                \
+    DECLTYPE(hashmap) next = &(hashmap)[hash];                  \
+    if (*next)                                                  \
+        while (*(next = &((*next)->next))) {}                   \
+    *next = value;                                              \
 }while(0)
 
-#define HASH_FIND(hashmap, key, out) do{                \
-    unsigned hash = FIRSTH;                             \
-    char* k = key;                                      \
-    while (*k) {                                        \
-        hash = (hash * A) ^ (k[0] * B);                 \
-        k++;                                            \
-    }                                                   \
-    hash %= OPTION_HASHMAP_SIZE;                        \
-                                                        \
-    (out) = (hashmap)[hash];                            \
-    while ((out) && strcmp(((out))->name, key) != 0) {  \
-        (out) = ((out))->next;                          \
-    }                                                   \
+#define HASH_FIND(hashmap, key, out) do{                        \
+    unsigned hash = FIRSTH;                                     \
+    char* k = key;                                              \
+    while (*k) {                                                \
+        hash = (hash * A) ^ (k[0] * B);                         \
+        k++;                                                    \
+    }                                                           \
+    hash %= OPTION_HASHMAP_SIZE;                                \
+                                                                \
+    (out) = (hashmap)[hash];                                    \
+    while ((out) && strcmp(((out))->name, key) != 0) {          \
+        (out) = ((out))->next;                                  \
+    }                                                           \
 }while(0)
 
 enum Type {
@@ -82,21 +79,22 @@ enum Type {
     ARRAY_ARRAY
 };
 
-struct OptionOutline {
-    char *name; //Key
-    enum Type type;
-    char *comment;
+struct ArrayOptionValue {
     union {
-        long dv_l;
-        double dv_d;
-        bool dv_b;
-        char *dv_s;
-        struct OptionOutline *dv_v;
+        long *a_l;
+        double *a_d;
+        bool *a_b;
+        char **a_s;
+        struct {
+            struct Option ***a_v; //Array of hash-tables (hash-table is ** and array is *)
+            struct Option **a_v_t; //"Template" that all elements in the array will follow
+        } a_v;
+        struct ArrayOptionValue *a_a;
     };
-    size_t compoundCount;
+    size_t len;
 };
 
-struct Option {
+typedef struct Option {
     char *name; //Key
     union {
         long v_l;
@@ -104,101 +102,154 @@ struct Option {
         bool v_b;
         char *v_s;
         struct Option **v_v;
-        struct ArrayOptionValue {
-            union {
-                long *a_l;
-                double *a_d;
-                bool *a_b;
-                char **a_s;
-                struct Option ***a_v;
-                struct ArrayOptionValue *a_a;
-            };
-            size_t len;
-        } v_a;
+        struct ArrayOptionValue v_a;
     };
-    size_t valueSize;
     enum Type type;
-    char *comment;
     union {
         long dv_l;
         double dv_d;
         bool dv_b;
         char *dv_s;
         struct Option **dv_v;
-        struct {
-            void *a;
-            size_t len;
-        } dv_a;
+        struct ArrayOptionValue dv_a;
     };
-    size_t line;
     struct Option *next; //Used as a linked list in hash map
-};
-
-typedef struct ConfigOptions {
-    char *name; //Key
-    char *file;
-    struct Option **options;
-    struct ConfigOptions *next; //Used as a linked list in hash map
-} ConfigOptions;
-
-size_t optionCount;
+} Option;
 
 size_t getFileSize(const char *filename);
 
-void initConfig_(struct ConfigOptions **configIn, char *file, size_t count, struct OptionOutline *options);
+void readConfig(Option **config, const char *filename);
 
-void readConfig_(struct ConfigOptions *config);
+struct Option *get_(Option **options, char *optName);
 
-void generateDefault_(struct ConfigOptions *config);
+void cleanOptions(Option **options);
 
-struct Option *get_(struct Option **options, char *optName);
-
-void cleanConfig_(struct ConfigOptions *config);
-
-void cleanOptions(struct Option **options);
-
-#define SET_FROM_OPTION(out, o) do{                                         \
-    *(out) = _Generic((*(out)),                                             \
-                    long: (o)->v_l,                                         \
-                    int: (o)->v_l,                                          \
-                    long long: (o)->v_l,                                    \
-                    short: (o)->v_l,                                        \
-                    double: (o)->v_d,                                       \
-                    float: (o)->v_d,                                        \
-                    char*: (o)->v_s,                                        \
-                    bool: (o)->v_b,                                         \
-                    bool*: (o)->v_a.a_b,                                    \
-                    long*: (o)->v_a.a_l,                                    \
-                    double*: (o)->v_a.a_d,                                  \
-                    default: (o)->v_v);                                     \
+#define SET_FROM_OPTION(out, o) do{                             \
+    *(out) = _Generic((*(out)),                                 \
+                    long: (o)->v_l,                             \
+                    int: (o)->v_l,                              \
+                    long long: (o)->v_l,                        \
+                    short: (o)->v_l,                            \
+                    double: (o)->v_d,                           \
+                    float: (o)->v_d,                            \
+                    char*: (o)->v_s,                            \
+                    bool: (o)->v_b,                             \
+                    bool*: (o)->v_a.a_b,                        \
+                    long*: (o)->v_a.a_l,                        \
+                    double*: (o)->v_a.a_d,                      \
+                    char**: (o)->v_a.a_s,                       \
+                    Option***: (o)->v_a.a_v.a_v,                \
+                    default: (o)->v_v);                         \
 }while(0)
 
-#define generateDefault(config) generateDefault_(config)
-#ifdef AUTO_GENERATE
-#define initConfig(config, file, count, options) do{                        \
-    initConfig_(&(config), file, count, options);                           \
-    FILE* fp = fopen(file, "r");                                            \
-    if(!fp) generateDefault(config);                                        \
-    else fclose(fp);                                                        \
+#define INIT_CONFIG(conf) conf = malloc(OPTION_HASHMAP_SIZE * sizeof(struct Option *));
+
+#define ADD_OPT_LONG(conf, name_in, default_v) do{              \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = LONG;                                           \
+    opt->dv_l = (default_v);                                    \
+    opt->v_l = opt->dv_l;                                       \
+    HASH_ADD(conf, opt);                                        \
+}while(0);
+
+#define ADD_OPT_DOUBLE(conf, name_in, default_v) do{            \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = DOUBLE;                                         \
+    opt->dv_d = (default_v);                                    \
+    opt->v_d = opt->dv_d;                                       \
+    HASH_ADD(conf, opt);                                        \
+}while(0);
+
+#define ADD_OPT_BOOL(conf, name_in, default_v) do{              \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = BOOL;                                           \
+    opt->dv_b = (default_v);                                    \
+    opt->v_b = opt->dv_b;                                       \
+    HASH_ADD(conf, opt);                                        \
+}while(0);
+
+#define ADD_OPT_STR(conf, name_in, default_v) do{               \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = TEXT;                                           \
+    opt->dv_s = (default_v);                                    \
+    opt->v_s = opt->dv_s;                                       \
+    HASH_ADD(conf, opt);                                        \
+}while(0);
+
+#define ADD_OPT_COMPOUND(conf, name_in, options) do{            \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = COMPOUND;                                       \
+    opt->v_v = options;                                         \
+    HASH_ADD(conf, opt);                                        \
 }while(0)
-#else
-#define initConfig(config, file, count, options) do{                        \
-    initConfig_(config, file, count, options);                              \
+
+#define ADD_OPT_ARRAY_LONG(conf, name_in, default_v) do{        \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = ARRAY_LONG;                                     \
+    opt->dv_a.a_l = default_v;                                  \
+    opt->dv_a.len = sizeof(default_v) / sizeof((default_v)[0]); \
+    opt->v_a = opt->dv_a;                                       \
+    HASH_ADD(conf, opt);                                        \
 }while(0)
-#endif
-#define readConfig(config) readConfig_(config)
-#define get(config, optName, out) do{                                       \
-    struct Option* o = get_((config)->options, optName);                    \
-    if(o) {                                                                 \
-        SET_FROM_OPTION(out, o);                                            \
-    }                                                                       \
+
+#define ADD_OPT_ARRAY_DOUBLE(conf, name_in, default_v) do{      \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = ARRAY_DOUBLE;                                   \
+    opt->dv_a.a_d = default_v;                                  \
+    opt->dv_a.len = sizeof(default_v) / sizeof((default_v)[0]); \
+    opt->v_a = opt->dv_a;                                       \
+    HASH_ADD(conf, opt);                                        \
 }while(0)
-#define get_array(config, optName, out, size) do{                           \
-    struct Option* o = get_((config)->options, optName);                    \
-    if(o) {                                                                 \
-        SET_FROM_OPTION(out, o);                                            \
-    }                                                                       \
-    (size) = o->v_a.len;                                                    \
+
+#define ADD_OPT_ARRAY_BOOL(conf, name_in, default_v) do{        \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = ARRAY_BOOL;                                     \
+    opt->dv_a.a_b = default_v;                                  \
+    opt->dv_a.len = sizeof(default_v) / sizeof((default_v)[0]); \
+    opt->v_a = opt->dv_a;                                       \
+    HASH_ADD(conf, opt);                                        \
 }while(0)
-#define cleanConfigs(config) cleanConfig_(config)
+
+#define ADD_OPT_ARRAY_STR(conf, name_in, default_v, len_in) do{ \
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = ARRAY_TEXT;                                     \
+    opt->dv_a.a_s = default_v;                                  \
+    opt->dv_a.len = len_in;                                     \
+    opt->v_a = opt->dv_a;                                       \
+    HASH_ADD(conf, opt);                                        \
+}while(0)
+
+#define ADD_OPT_ARRAY_COMPOUND(conf, name_in, template_v, default_v) do{\
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = ARRAY_COMPOUND;                                 \
+    opt->dv_a.a_v.a_v = default_v;                              \
+    opt->dv_a.a_v.a_v_t = template_v;                           \
+    opt->dv_a.len = sizeof(default_v) / sizeof((default_v)[0]); \
+    opt->v_a = opt->dv_a;                                       \
+    HASH_ADD(conf, opt);                                        \
+}while(0)
+
+#define get(config, optName, out) do{                           \
+    struct Option* o = get_(config, optName);                   \
+    if(o) {                                                     \
+        SET_FROM_OPTION(out, o);                                \
+    }                                                           \
+}while(0)
+#define get_array(config, optName, out, size) do{               \
+    struct Option* o = get_(config, optName);                   \
+    if(o) {                                                     \
+        SET_FROM_OPTION(out, o);                                \
+        (size) = o->v_a.len;                                    \
+    }                                                           \
+}while(0)
 #endif

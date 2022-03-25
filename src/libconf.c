@@ -71,64 +71,6 @@ void trimnp(char *in, const char *end, char **out) {
     *out = begin;
 }
 
-struct Option *outlineToOption(struct OptionOutline *in) {
-    if (!in) return NULL;
-    struct Option *option = malloc(sizeof(struct Option));
-    option->name = strdup(in->name);
-    option->comment = strdup(in->comment);
-    ++optionCount;
-    switch (in->type) {
-        case TEXT: {
-            if (in->dv_s) {
-                option->dv_s = strdup(in->dv_s);
-                option->v_s = option->dv_s;
-                option->valueSize = strlen(option->v_s);
-            }
-            break;
-        }
-        case LONG: {
-            option->dv_l = in->dv_l;
-            option->v_l = option->dv_l;
-            option->valueSize = sizeof(long);
-            break;
-        }
-        case DOUBLE: {
-            option->dv_d = in->dv_d;
-            option->v_d = option->dv_d;
-            option->valueSize = sizeof(double);
-            break;
-        }
-        case BOOL: {
-            option->dv_b = in->dv_b;
-            option->v_b = option->dv_b;
-            option->valueSize = sizeof(bool);
-            break;
-        }
-        case COMPOUND: {
-            option->v_v = malloc(OPTION_HASHMAP_SIZE * sizeof(struct Option *));
-            for (int i = 0; i < in->compoundCount; ++i) {
-                struct Option *opt1 = outlineToOption(&(in->dv_v[i]));
-                HASH_ADD(option->v_v, opt1);
-            }
-            option->valueSize = sizeof(struct Option *);
-            break;
-        }
-    }
-    option->type = in->type;
-    return option;
-}
-
-void initConfig_(struct ConfigOptions **configIn, char *file, size_t count, struct OptionOutline *options) {
-    (*configIn) = malloc(sizeof(struct ConfigOptions));
-    (*configIn)->file = strdup(file);
-    (*configIn)->options = malloc(OPTION_HASHMAP_SIZE * sizeof(struct Option *));
-    optionCount = 0;
-    for (int i = 0; i < count; ++i) {
-        struct Option *opt = outlineToOption(&(options[i]));
-        HASH_ADD((*configIn)->options, opt);
-    }
-}
-
 void parseConfigWhole(struct Option **options, const char *file, char *bufferOriginal, size_t length) {
     char *buffer = bufferOriginal;
     char *lineEnd = buffer;
@@ -172,7 +114,7 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
 
                 char *doubleStart = strchr(assignIndex + 1, '"');
                 char *singleStart = strchr(assignIndex + 1, '\'');
-                bool single = singleStart < doubleStart && singleStart;
+                bool single = (singleStart < doubleStart && singleStart) || (singleStart && !doubleStart);
                 if ((!single && !doubleStart) || (single ? singleStart > endValueIndex : doubleStart > endValueIndex)) {
                     fprintf(stderr,
                             "Error at option %s:%s: String must start on the same line as the option definition with ' or \"\n",
@@ -194,7 +136,6 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 if (*(multiLineEnd - 1) == '\n') multiLineEnd--;
 
                 optOut->v_s = strndup(stringStart, multiLineEnd - stringStart);
-                optOut->valueSize = multiLineEnd - stringStart;
                 if (buffer == 1 || !buffer) {
                     free(optName);
                     return;
@@ -213,7 +154,6 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 } else {
                     optOut->v_l = tempL;
                 }
-                optOut->valueSize = sizeof(long);
                 break;
             }
             case DOUBLE: {
@@ -228,7 +168,6 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 } else {
                     optOut->v_d = tempD;
                 }
-                optOut->valueSize = sizeof(double);
                 break;
             }
             case BOOL: {
@@ -236,17 +175,14 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 trimnp(assignIndex + 1, endValueIndex, &start);
                 if (!strncasecmp(start, "true", 4) || !strncasecmp(start, "yes", 3)) {
                     optOut->v_b = true;
-                    optOut->valueSize = sizeof(bool);
                     break;
                 } else if (!(!strncasecmp(start, "false", 5) || !strncasecmp(start, "no", 2))) {
                     fprintf(stderr, "Error at option %s:%s: Invalid boolean. Must be true, false, yes or no\n",
                             file, optName);
                     optOut->v_b = optOut->dv_b;
-                    optOut->valueSize = sizeof(bool);
                     break;
                 }
                 optOut->v_b = false;
-                optOut->valueSize = sizeof(bool);
                 break;
             }
             case COMPOUND: {
@@ -276,7 +212,6 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 }
 
                 parseConfigWhole(optOut->v_v, file, compoundStart + 1, compoundEnd - compoundStart + 1);
-                optOut->valueSize = sizeof(struct Option *);
                 buffer = strchrnul_(compoundEnd, '\n');
                 if (!buffer) {
                     free(optName);
@@ -344,7 +279,6 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 }
                 optOut->v_a.a_b = arr;
                 optOut->v_a.len = i;
-                optOut->valueSize = i * sizeof(bool);
                 break;
             }
             case ARRAY_LONG: {
@@ -404,7 +338,6 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 }
                 optOut->v_a.a_l = arr;
                 optOut->v_a.len = i;
-                optOut->valueSize = i * sizeof(long);
                 break;
             }
             case ARRAY_DOUBLE: {
@@ -464,7 +397,180 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 }
                 optOut->v_a.a_d = arr;
                 optOut->v_a.len = i;
-                optOut->valueSize = i * sizeof(double);
+                break;
+            }
+            case ARRAY_TEXT: {
+                char *arrayStart = strchr(assignIndex + 1, '[');
+                if (!arrayStart || arrayStart > endValueIndex) {
+                    fprintf(stderr,
+                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
+                            file, optName);
+                    break;
+                }
+
+                char **arr = malloc(sizeof(char *) * ARRAY_ALLOCATION);
+                size_t i = 0;
+                size_t arraySize = ARRAY_ALLOCATION;
+                char *nextElement = arrayStart + 1;
+                char *currentElement = arrayStart + 1;
+                do {
+                    if (arraySize - 2 == i) {
+                        char **tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(char *));
+                        if (!tmp) {
+                            fprintf(stderr, "Error while reallocating memory for string array: %s\n", strerror(errno));
+                            free(arr);
+                            goto loopEnd;
+                        }
+                        arr = tmp;
+                    }
+
+                    //STRING PARSING START
+
+                    char *doubleStart = strchr(currentElement, '"');
+                    char *singleStart = strchr(currentElement, '\'');
+                    char *possibleArrayEnd = strchr(currentElement, ']');
+                    if (!possibleArrayEnd) {
+                        fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
+                        free(arr);
+                        goto loopEnd;
+                    }
+                    if ((!doubleStart || possibleArrayEnd < doubleStart) &&
+                        (!singleStart || possibleArrayEnd < singleStart)) {
+                        break;
+                    }
+                    bool single = (singleStart < doubleStart && singleStart) || (singleStart && !doubleStart);
+                    if ((!single && !doubleStart)) {
+                        fprintf(stderr,
+                                "Error at option %s:%s[%zu]: String must start with ' or \"\n",
+                                file, optName, i);
+                        break;
+                    }
+                    char searchChar = single ? '\'' : '"';
+                    char *stringStart = single ? singleStart : doubleStart;
+                    stringStart += 1 + (*(stringStart + 1) == '\n');
+
+                    char *multiLineEnd = strchr(stringStart, searchChar);
+                    if (!multiLineEnd) {
+                        fprintf(stderr, "Error at option %s:%s: String must end with ' or \"\n", file, optName);
+                        break;
+                    }
+
+                    nextElement = strchr(multiLineEnd, ',');
+                    if (*(multiLineEnd - 1) == '\n') multiLineEnd--;
+
+                    arr[i] = strndup(stringStart, multiLineEnd - stringStart);
+
+                    if (!nextElement)break;
+
+                    i++;
+                    currentElement = nextElement + 1;
+                } while (true);
+
+                if (i != arraySize) {
+                    char **tmp = realloc(arr, i * sizeof(char *));
+                    if (!tmp) {
+                        fprintf(stderr, "Error while reallocating memory for string array: %s\n", strerror(errno));
+                        free(arr);
+                        buffer = currentElement;
+                        goto loopEndR;
+                    }
+                    arr = tmp;
+                }
+                optOut->v_a.a_s = arr;
+                optOut->v_a.len = i;
+                break;
+            }
+            case ARRAY_COMPOUND: {
+                char *arrayStart = strchr(assignIndex + 1, '[');
+                if (!arrayStart || arrayStart > endValueIndex) {
+                    fprintf(stderr,
+                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
+                            file, optName);
+                    break;
+                }
+
+                Option ***arr = malloc(sizeof(Option **) * ARRAY_ALLOCATION);
+                size_t i = 0;
+                size_t arraySize = ARRAY_ALLOCATION;
+                char *nextElement = arrayStart + 1;
+                char *currentElement = arrayStart + 1;
+                do {
+                    if (arraySize - 2 == i) {
+                        Option ***tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(Option **));
+                        if (!tmp) {
+                            fprintf(stderr, "Error while reallocating memory for compound array: %s\n",
+                                    strerror(errno));
+                            free(arr);
+                            goto loopEnd;
+                        }
+                        arr = tmp;
+                    }
+
+                    char *compoundStart = strchr(currentElement, '{');
+                    char *potentialArrayEnd = strchr(currentElement, ']');
+                    if (!compoundStart || compoundStart > potentialArrayEnd) {
+                        break;
+                    }
+                    int openCount = 1;
+                    char *compoundEnd = NULL;
+                    for (char *j = compoundStart + 1; j < compoundStart + length; ++j) {
+                        if (*j == '{') openCount++;
+                        if (*j == '}') openCount--;
+                        if (!openCount) {
+                            compoundEnd = j;
+                            break;
+                        }
+                    }
+                    if (openCount) {
+                        fprintf(stderr, "Error at option %s:%s: Compound must end with '}'\n", file, optName);
+                        free(arr);
+                        goto loopEnd;
+                    }
+
+                    arr[i] = malloc(sizeof(Option *) * OPTION_HASHMAP_SIZE);
+                    /*
+                      Copies all options from the template to each element of the array. It's quite ugly
+                      but seems to work. It should probably be checked over.
+                      It's ugly but better than looping over the entire hashmap using HASH_ITER, then copying
+                      every option, and re-adding it using HASH_ADD. This way the next element in the hashmap
+                      linked list bucket can also be efficiently copied at the same time.
+                     */
+                    for (Option **tmp = optOut->v_a.a_v.a_v_t; tmp - (optOut->v_a.a_v.a_v_t) <
+                                                               OPTION_HASHMAP_SIZE; ++tmp) {
+                        Option *o1 = *tmp;
+                        if (!o1) continue;
+                        Option *o1n = malloc(sizeof(*o1));
+                        memcpy(o1n, o1, sizeof(*o1));
+                        arr[i][tmp - optOut->v_a.a_v.a_v_t] = o1n;
+
+                        Option *opt1p = o1n;
+                        for (Option *opt1 = o1n->next; opt1; opt1 = opt1->next) {
+                            Option *o1nnext = malloc(sizeof(*opt1));
+                            memcpy(o1nnext, opt1, sizeof(*opt1));
+                            opt1p->next = o1nnext;
+                            opt1p = opt1;
+                        }
+                    }
+                    parseConfigWhole(arr[i], file, compoundStart + 1, compoundEnd - compoundStart + 1);
+
+                    nextElement = compoundEnd;
+                    i++;
+                    currentElement = nextElement + 1;
+                } while (true);
+
+                if (i != arraySize) {
+                    Option ***tmp = realloc(arr, i * sizeof(Option **));
+                    if (!tmp) {
+                        fprintf(stderr, "Error while reallocating memory for compound array: %s\n", strerror(errno));
+                        free(arr);
+                        lineEnd = currentElement;
+                        break;
+                    }
+                    arr = tmp;
+                }
+                optOut->v_a.a_v.a_v = arr;
+                optOut->v_a.len = i;
+                lineEnd = currentElement;
                 break;
             }
         }
@@ -524,7 +630,7 @@ size_t preprocessor(char *bufferOriginal, size_t bufferOriginalLen, char **buffe
     bool macroUsed = false;
 
     while ((macroStart = strchr(macroStart, '#')) && macroStart - bufferOriginal < bufferOriginalLen) {
-        char *lineBegin = strrchr_(macroStart, prevMacroEnd - macroStart, '\n') + 1;
+        char *lineBegin = strrchr_(macroStart, macroStart - prevMacroEnd, '\n') + 1;
         if (lineBegin == NULL + 1) { // 1 was added to lineBegin, so it will be NULL + 1 if it would usually be NULL
             lineBegin = prevMacroEnd;
         }
@@ -662,18 +768,18 @@ size_t preprocessor(char *bufferOriginal, size_t bufferOriginalLen, char **buffe
 }
 
 
-void readConfig_(struct ConfigOptions *config) {
+void readConfig(struct Option **config, const char *filename) {
     if (!config) {
-        fprintf(stderr, "Error: Config '%s' not yet initialized\n", config->file);
+        fprintf(stderr, "Error: Config '%s' not yet initialized\n", filename);
         return;
     }
 
     char *bufferOriginal = NULL;
-    size_t length = readFile(config->file, &bufferOriginal);
+    size_t length = readFile(filename, &bufferOriginal);
 
     //Get path to the parent directory used to find other files which may be included
-    char *parentDirI = strrchr(config->file, '/') + 1;
-    char *parentDir = strndup(config->file, parentDirI - config->file);
+    char *parentDirI = strrchr(filename, '/') + 1;
+    char *parentDir = strndup(filename, parentDirI - filename);
 
     //Process macros before parsing file
     char *buffer = NULL;
@@ -685,7 +791,7 @@ void readConfig_(struct ConfigOptions *config) {
     fclose(fp);
 #endif
 
-    parseConfigWhole(config->options, config->file, buffer, len);
+    parseConfigWhole(config, filename, buffer, len);
 
     free(bufferOriginal);
     free(buffer);
@@ -721,122 +827,6 @@ struct Option *get_(struct Option **options, char *optName) {
     return opt;
 }
 
-void cleanConfig_(struct ConfigOptions *config) {
-    if (!config) return;
-
-    if (config->name) free(config->name);
-    free(config->file);
-
-    cleanOptions(config->options);
-
-    free(config);
-}
-
-//Utility macro
-#define addIndent(buf, indent) { for(int i = 0;i<(indent);++i) { *((buf)+i)='\t'; } (buf)+=(indent); }
-
-char *generateDef(struct Option **options, char **obuffer, size_t bufferOffset, size_t bufferSize, size_t indent) {
-    struct Option *opt;
-    size_t bufSize = bufferSize;
-    char *buf = (*obuffer) + bufferOffset;
-
-    if (bufSize - bufferOffset >= NEW_CONFIG_RANDOM_THRESHOLD) {
-        *obuffer = realloc(*obuffer, bufferOffset + NEW_CONFIG_BUFFER_SIZE);
-        if (!*obuffer) {
-            fprintf(stderr, "Error: Can't reallocate memory for generated config file: '%s'", strerror(errno));
-            return NULL;
-        }
-    }
-
-    HASH_ITER(options, opt) {
-            if (opt->comment) {
-                char *comment = opt->comment;
-                char *commentEnd = comment;
-                while ((commentEnd = strchr(commentEnd + 1, '\n'))) {
-                    addIndent(buf, indent);
-                    *(buf++) = '/';
-                    *(buf++) = '/';
-                    size_t commentLen = commentEnd - comment;
-                    strncpy(buf, comment, commentLen);
-                    buf += commentLen;
-                    *(buf++) = '\n';
-
-                    comment = commentEnd + 1;
-                }
-                addIndent(buf, indent);
-                *(buf++) = '/';
-                *(buf++) = '/';
-                size_t commentLen = strlen(comment);
-                strncpy(buf, comment, commentLen);
-                buf += commentLen;
-                *(buf++) = '\n';
-            }
-            addIndent(buf, indent);
-            strcpy(buf, opt->name);
-            buf += strlen(opt->name);
-            *(buf++) = ' ';
-            *(buf++) = '=';
-            *(buf++) = ' ';
-
-            //Insert value
-            switch (opt->type) {
-                case TEXT: {
-                    *(buf++) = '"';
-                    strcpy(buf, opt->v_s);
-                    buf += opt->valueSize;
-                    *(buf++) = '"';
-                    break;
-                }
-                case LONG: {
-                    buf += sprintf(buf, "%ld", opt->v_l);
-                    break;
-                }
-                case DOUBLE: {
-                    buf += sprintf(buf, "%f", opt->v_d);
-                    break;
-                }
-                case BOOL: {
-                    if (opt->v_b)
-                        buf += sprintf(buf, "true");
-                    else
-                        buf += sprintf(buf, "false");
-                    break;
-                }
-                case COMPOUND: {
-                    if (opt->v_v) {
-                        *(buf++) = '{';
-                        *(buf++) = '\n';
-                        buf = generateDef(opt->v_v, obuffer, buf - *obuffer, bufSize, indent + 1);
-                        if (!buf) return NULL;
-                        addIndent(buf, indent + 1);
-                        *(buf - 1) = '}';
-                    }
-                    break;
-                }
-            }
-            *(buf++) = '\n';
-            *(buf++) = '\n';
-        }
-    return buf;
-}
-
-void generateDefault_(struct ConfigOptions *config) {
-    FILE *fp = fopen(config->file, "w");
-    if (!fp) {
-        fprintf(stderr, "Error: Can't open/create file '%s': %s\n", config->file, strerror(errno));
-        return;
-    }
-
-    //Allocate the larger amount of bytes: 1MB or Number of options * 256
-    char *buffer = malloc(NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT * optionCount > NEW_CONFIG_BUFFER_SIZE ?
-                          NEW_CONFIG_BUFFER_MIN_DIFF_PER_OPT * optionCount : NEW_CONFIG_BUFFER_SIZE);
-    char *endBuf = generateDef(config->options, &buffer, 0, NEW_CONFIG_BUFFER_SIZE, 0);
-    if (!endBuf)return;
-    *endBuf = '\0';
-    fputs(buffer, fp);
-    fclose(fp);
-}
-
 size_t getFileSize(const char *filename) {
 #ifndef _WIN32
     struct stat st;
@@ -849,21 +839,19 @@ size_t getFileSize(const char *filename) {
 #endif
 }
 
-void cleanOptions(struct Option **options) {
+void cleanOptions(Option **options) {
     if (!options)return;
-    struct Option *opt;
+    Option *opt;
 
     HASH_ITER(options, opt) {
             if (opt->type == TEXT) {
-                free(opt->v_s);
                 if (opt->v_s != opt->dv_s)
-                    free(opt->dv_s); //Prevent double free in the case that the default and value are the same
+                    free(opt->v_s); // Default value does not need to be freed because it was made from a string literal
             } else if (opt->type == COMPOUND) {
                 cleanOptions(opt->v_v);
                 if (opt->v_v != opt->dv_v) cleanOptions(opt->dv_v);
             }
-            free(opt->name);
-            free(opt->comment);
             free(opt);
         }
+    free(options);
 }
