@@ -71,7 +71,374 @@ void trimnp(char *in, const char *end, char **out) {
     *out = begin;
 }
 
-void parseConfigWhole(struct Option **options, const char *file, char *bufferOriginal, size_t length) {
+void parseConfigWhole(Option **options, const char *file, char *bufferOriginal, size_t length);
+
+char *parseArray(ArrayOption *array, const char *file, const char *optName, const char *buffer, const char *bufferEnd) {
+    if (!array)return NULL;
+    char *arrayStart = strchr(buffer, '[');
+    if (!arrayStart || arrayStart > bufferEnd) {
+        fprintf(stderr,
+                "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
+                file, optName);
+        return NULL;
+    }
+
+    switch (array->type) {
+        case BOOL: {
+            char *arrayEnd = strchr(arrayStart + 1, ']');
+            if (!arrayEnd) {
+                fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
+                return NULL;
+            }
+
+            bool *arr = malloc(sizeof(bool) * ARRAY_ALLOCATION);
+            size_t i = 0;
+            size_t arraySize = ARRAY_ALLOCATION;
+            char *nextElement = arrayStart + 1;
+            char *currentElement = arrayStart + 1;
+            do {
+                nextElement = strchr(nextElement + 1, ',');
+                if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
+                char *valueStart;
+                trimnp(currentElement, nextElement, &valueStart);
+                if (arraySize - 2 == i) {
+                    bool *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(bool));
+                    if (!tmp) {
+                        fprintf(stderr, "Error while reallocating memory for bool array: %s\n", strerror(errno));
+                        goto clean_b;
+                    }
+                    arr = tmp;
+                }
+                arr[i] = !strncasecmp(valueStart, "true", 4) || !strncasecmp(valueStart, "yes", 3);
+                if (!arr[i] && !(!strncasecmp(valueStart, "false", 5) ||
+                                 !strncasecmp(valueStart, "no", 2))) { // If option is not true or false
+                    fprintf(stderr, "Error at option %s:%s[%zu]: Invalid boolean. Must be true, false, yes or no\n",
+                            file, optName, i);
+                    goto clean_b;
+                }
+                i++;
+                currentElement = nextElement + 1;
+            } while (nextElement != arrayEnd);
+
+            if (i != arraySize) {
+                bool *tmp = realloc(arr, i * sizeof(bool));
+                if (!tmp) {
+                    fprintf(stderr, "Error while reallocating memory for bool array: %s\n", strerror(errno));
+                    goto clean_b;
+                }
+                arr = tmp;
+            }
+            array->a_b = arr;
+            array->len = i;
+            return arrayEnd + 1;
+            clean_b:
+            free(arr);
+            return arrayEnd + 1;
+        }
+        case LONG: {
+            char *arrayEnd = strchr(arrayStart + 1, ']');
+            if (!arrayEnd) {
+                fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
+                return NULL;
+            }
+
+            long *arr = malloc(sizeof(long) * ARRAY_ALLOCATION);
+            size_t i = 0;
+            size_t arraySize = ARRAY_ALLOCATION;
+            char *nextElement = arrayStart + 1;
+            char *currentElement = arrayStart + 1;
+            do {
+                nextElement = strchr(nextElement + 1, ',');
+                if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
+                char *valueStart;
+                trimnp(currentElement, nextElement, &valueStart);
+                if (arraySize - 2 == i) {
+                    long *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(long));
+                    if (!tmp) {
+                        fprintf(stderr, "Error while reallocating memory for long array: %s\n", strerror(errno));
+                        goto clean_l;
+                    }
+                    arr = tmp;
+                }
+                char *endPtr = NULL;
+                arr[i] = strtol(valueStart, &endPtr, 10);
+                if (endPtr == valueStart) {
+                    //error
+                    fprintf(stderr, "Error at option %s:%s[%zu]: Invalid long: %s\n", file, optName, i,
+                            strerror(errno));
+                }
+                i++;
+                currentElement = nextElement + 1;
+            } while (nextElement != arrayEnd);
+
+            if (i != arraySize) {
+                long *tmp = realloc(arr, i * sizeof(long));
+                if (!tmp) {
+                    fprintf(stderr, "Error while reallocating memory for long array: %s\n", strerror(errno));
+                    goto clean_l;
+                }
+                arr = tmp;
+            }
+            array->a_l = arr;
+            array->len = i;
+            return arrayEnd + 1;
+            clean_l:
+            free(arr);
+            return arrayEnd + 1;
+        }
+        case DOUBLE: {
+            char *arrayEnd = strchr(arrayStart + 1, ']');
+            if (!arrayEnd) {
+                fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
+                return NULL;
+            }
+
+            double *arr = malloc(sizeof(double) * ARRAY_ALLOCATION);
+            size_t i = 0;
+            size_t arraySize = ARRAY_ALLOCATION;
+            char *nextElement = arrayStart + 1;
+            char *currentElement = arrayStart + 1;
+            do {
+                nextElement = strchr(nextElement + 1, ',');
+                if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
+                char *valueStart;
+                trimnp(currentElement, nextElement, &valueStart);
+                if (arraySize - 2 == i) {
+                    double *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(double));
+                    if (!tmp) {
+                        fprintf(stderr, "Error while reallocating memory for double array: %s\n", strerror(errno));
+                        goto clean_d;
+                    }
+                    arr = tmp;
+                }
+                char *endPtr = NULL;
+                arr[i] = strtod(valueStart, &endPtr);
+                if (endPtr == valueStart) {
+                    //error
+                    fprintf(stderr, "Error at option %s:%s[%zu]: Invalid double: %s\n", file, optName, i,
+                            strerror(errno));
+                }
+                i++;
+                currentElement = nextElement + 1;
+            } while (nextElement != arrayEnd);
+
+            if (i != arraySize) {
+                double *tmp = realloc(arr, i * sizeof(double));
+                if (!tmp) {
+                    fprintf(stderr, "Error while reallocating memory for double array: %s\n", strerror(errno));
+                    goto clean_d;
+                }
+                arr = tmp;
+            }
+            array->a_d = arr;
+            array->len = i;
+            return arrayEnd + 1;
+            clean_d:
+            free(arr);
+            return arrayEnd + 1;
+        }
+        case TEXT: {
+            char **arr = malloc(sizeof(char *) * ARRAY_ALLOCATION);
+            size_t i = 0;
+            size_t arraySize = ARRAY_ALLOCATION;
+            char *prevElement = arrayStart + 1;
+            char *currentElement = arrayStart + 1;
+            do {
+                if (arraySize - 2 == i) {
+                    char **tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(char *));
+                    if (!tmp) {
+                        fprintf(stderr, "Error while reallocating memory for string array: %s\n", strerror(errno));
+                        goto clean_s;
+                    }
+                    arr = tmp;
+                }
+
+                char *doubleStart = strchr(currentElement, '"');
+                char *singleStart = strchr(currentElement, '\'');
+                char *possibleArrayEnd = strchr(prevElement, ']');
+                if (!possibleArrayEnd) {
+                    fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
+                    goto clean_s;
+                }
+                if ((!doubleStart || possibleArrayEnd < doubleStart) &&
+                    (!singleStart || possibleArrayEnd < singleStart)) {
+                    break;
+                }
+                bool single = (singleStart < doubleStart && singleStart) || (singleStart && !doubleStart);
+                if ((!single && !doubleStart)) {
+                    fprintf(stderr,
+                            "Error at option %s:%s[%zu]: String must start with ' or \"\n",
+                            file, optName, i);
+                    break;
+                }
+                char searchChar = single ? '\'' : '"';
+                char *stringStart = single ? singleStart : doubleStart;
+                stringStart += 1 + (*(stringStart + 1) == '\n');
+
+                char *multiLineEnd = strchr(stringStart, searchChar);
+                if (!multiLineEnd) {
+                    fprintf(stderr, "Error at option %s:%s: String must end with ' or \"\n", file, optName);
+                    break;
+                }
+
+                if (*(multiLineEnd - 1) == '\n') multiLineEnd--;
+
+                arr[i] = strndup(stringStart, multiLineEnd - stringStart);
+
+                prevElement = currentElement;
+                currentElement = strchr(multiLineEnd, ',') + 1;
+                if (!currentElement)break;
+                i++;
+            } while (true);
+
+            if (i != arraySize) {
+                char **tmp = realloc(arr, i * sizeof(char *));
+                if (!tmp) {
+                    fprintf(stderr, "Error while reallocating memory for string array: %s\n", strerror(errno));
+                    goto clean_s;
+                }
+                arr = tmp;
+            }
+            array->a_s = arr;
+            array->len = i;
+            return prevElement;
+            clean_s:
+            free(arr);
+            return prevElement;
+        }
+        case COMPOUND: {
+            Option ***arr = malloc(sizeof(Option **) * ARRAY_ALLOCATION);
+            size_t i = 0;
+            size_t arraySize = ARRAY_ALLOCATION;
+            char *currentElement = arrayStart + 1;
+            do {
+                if (arraySize - 2 == i) {
+                    Option ***tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(Option **));
+                    if (!tmp) {
+                        fprintf(stderr, "Error while reallocating memory for compound array: %s\n",
+                                strerror(errno));
+                        goto clean_c;
+                    }
+                    arr = tmp;
+                }
+
+                char *compoundStart = strchr(currentElement, '{');
+                char *potentialArrayEnd = strchr(currentElement, ']');
+                if (!compoundStart || compoundStart > potentialArrayEnd) {
+                    break;
+                }
+                int openCount = 1;
+                char *compoundEnd = NULL;
+                for (char *j = compoundStart + 1; j < bufferEnd; ++j) {
+                    if (*j == '{') openCount++;
+                    if (*j == '}') openCount--;
+                    if (!openCount) {
+                        compoundEnd = j;
+                        break;
+                    }
+                }
+                if (openCount) {
+                    fprintf(stderr, "Error at option %s:%s: Compound must end with '}'\n", file, optName);
+                    goto clean_c;
+                }
+
+                arr[i] = malloc(sizeof(Option *) * OPTION_HASHMAP_SIZE);
+                /*
+                  Copies all options from the template to each element of the array. It's quite ugly
+                  but seems to work. It should probably be checked over.
+                  It's ugly but better than looping over the entire hashmap using HASH_ITER, then copying
+                  every option, and re-adding it using HASH_ADD. This way the next element in the hashmap
+                  linked list bucket can also be efficiently copied at the same time.
+                 */
+                for (Option **tmp = array->a_v.a_v_t; tmp - (array->a_v.a_v_t) <
+                                                      OPTION_HASHMAP_SIZE; ++tmp) {
+                    Option *o1 = *tmp;
+                    if (!o1) continue;
+                    Option *o1n = malloc(sizeof(*o1));
+                    memcpy(o1n, o1, sizeof(*o1));
+                    arr[i][tmp - array->a_v.a_v_t] = o1n;
+
+                    Option *opt1p = o1n;
+                    for (Option *opt1 = o1n->next; opt1; opt1 = opt1->next) {
+                        Option *o1nnext = malloc(sizeof(*opt1));
+                        memcpy(o1nnext, opt1, sizeof(*opt1));
+                        opt1p->next = o1nnext;
+                        opt1p = opt1;
+                    }
+                }
+                parseConfigWhole(arr[i], file, compoundStart + 1, compoundEnd - compoundStart + 1);
+
+                i++;
+                currentElement = compoundEnd + 1;
+            } while (true);
+
+            if (i != arraySize) {
+                Option ***tmp = realloc(arr, i * sizeof(Option **));
+                if (!tmp) {
+                    fprintf(stderr, "Error while reallocating memory for compound array: %s\n", strerror(errno));
+                    goto clean_c;
+                }
+                arr = tmp;
+            }
+            array->a_v.a_v = arr;
+            array->len = i;
+            return currentElement;
+            clean_c:
+            free(arr);
+            return currentElement;
+        }
+        case ARRAY: {
+            const char *b = strchr(arrayStart + 1, '[');
+            ArrayOption *arr = malloc(ARRAY_ALLOCATION * sizeof(ArrayOption));
+            size_t arrlen = ARRAY_ALLOCATION;
+            size_t i = 0;
+            while (b && b < bufferEnd) {
+                if (i - 2 == arrlen) {
+                    ArrayOption *tmp = realloc(arr, (arrlen + ARRAY_ALLOCATION) * sizeof(ArrayOption));
+                    arrlen += ARRAY_ALLOCATION;
+                    if (!tmp) {
+                        fprintf(stderr, "Error while reallocating memory for array array: %s\n", strerror(errno));
+                        free(arr);
+                        return NULL;
+                    }
+                    arr = tmp;
+                }
+                arr[i].type = array->a_a.t->type;
+                b = parseArray(&(arr[i]), file, optName, b, bufferEnd);
+                if (!b) {
+                    free(arr);
+                    return NULL;
+                }
+                char *next = strchr(b, '[');
+                char *possibleEnd = strchr(b, ']');
+                if (possibleEnd < next) { //end of array reached
+                    if (i + 1 != arrlen) {
+                        ArrayOption *tmp = realloc(arr, (i + 1) * sizeof(ArrayOption));
+                        if (!tmp) {
+                            fprintf(stderr, "Error while reallocating memory for array array: %s\n", strerror(errno));
+                            free(arr);
+                            return NULL;
+                        }
+                        arr = tmp;
+                    }
+                    array->a_a.a_a = arr;
+                    array->len = i + 1;
+                    return possibleEnd;
+                }
+                b = next;
+                i++;
+            }
+            fprintf(stderr,
+                    "Error at option %s:%s: Array in array must start on the same line as the option definition with [\n",
+                    file, optName);
+            free(arr);
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
+void parseConfigWhole(Option **options, const char *file, char *bufferOriginal, size_t length) {
     char *buffer = bufferOriginal;
     char *lineEnd = buffer;
 
@@ -220,357 +587,10 @@ void parseConfigWhole(struct Option **options, const char *file, char *bufferOri
                 lineEnd = buffer;
                 break;
             }
-            case ARRAY_BOOL: {
-                char *arrayStart = strchr(assignIndex + 1, '[');
-                if (!arrayStart || arrayStart > endValueIndex) {
-                    fprintf(stderr,
-                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
-                            file, optName);
-                    break;
-                }
-                char *arrayEnd = strchr(arrayStart + 1, ']');
-                if (!arrayEnd) {
-                    fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
-                    break;
-                }
-
-                bool *arr = malloc(sizeof(bool) * ARRAY_ALLOCATION);
-                size_t i = 0;
-                size_t arraySize = ARRAY_ALLOCATION;
-                char *nextElement = arrayStart + 1;
-                char *currentElement = arrayStart + 1;
-                do {
-                    nextElement = strchr(nextElement + 1, ',');
-                    if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
-                    char *valueStart;
-                    trimnp(currentElement, nextElement, &valueStart);
-                    if (arraySize - 2 == i) {
-                        bool *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(bool));
-                        if (!tmp) {
-                            fprintf(stderr, "Error while reallocating memory for bool array: %s\n", strerror(errno));
-                            free(arr);
-                            buffer = arrayEnd + 1;
-                            goto loopEndR;
-                        }
-                        arr = tmp;
-                    }
-                    arr[i] = !strncasecmp(valueStart, "true", 4) || !strncasecmp(valueStart, "yes", 3);
-                    if (!arr[i] && !(!strncasecmp(valueStart, "false", 5) ||
-                                     !strncasecmp(valueStart, "no", 2))) { // If option is not true or false
-                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid boolean. Must be true, false, yes or no\n",
-                                file, optName, i);
-                        free(arr);
-                        buffer = arrayEnd + 1;
-                        goto loopEndR;
-                    }
-                    i++;
-                    currentElement = nextElement + 1;
-                } while (nextElement != arrayEnd);
-
-                if (i != arraySize) {
-                    bool *tmp = realloc(arr, i * sizeof(bool));
-                    if (!tmp) {
-                        fprintf(stderr, "Error while reallocating memory for bool array: %s\n", strerror(errno));
-                        free(arr);
-                        buffer = arrayEnd + 1;
-                        goto loopEndR;
-                    }
-                    arr = tmp;
-                }
-                optOut->v_a.a_b = arr;
-                optOut->v_a.len = i;
-                break;
-            }
-            case ARRAY_LONG: {
-                char *arrayStart = strchr(assignIndex + 1, '[');
-                if (!arrayStart || arrayStart > endValueIndex) {
-                    fprintf(stderr,
-                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
-                            file, optName);
-                    break;
-                }
-                char *arrayEnd = strchr(arrayStart + 1, ']');
-                if (!arrayEnd) {
-                    fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
-                    break;
-                }
-
-                long *arr = malloc(sizeof(long) * ARRAY_ALLOCATION);
-                size_t i = 0;
-                size_t arraySize = ARRAY_ALLOCATION;
-                char *nextElement = arrayStart + 1;
-                char *currentElement = arrayStart + 1;
-                do {
-                    nextElement = strchr(nextElement + 1, ',');
-                    if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
-                    char *valueStart;
-                    trimnp(currentElement, nextElement, &valueStart);
-                    if (arraySize - 2 == i) {
-                        long *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(long));
-                        if (!tmp) {
-                            fprintf(stderr, "Error while reallocating memory for long array: %s\n", strerror(errno));
-                            free(arr);
-                            buffer = arrayEnd + 1;
-                            goto loopEndR;
-                        }
-                        arr = tmp;
-                    }
-                    char *endPtr = NULL;
-                    arr[i] = strtol(valueStart, &endPtr, 10);
-                    if (endPtr == valueStart) {
-                        //error
-                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid long: %s\n", file, optName, i,
-                                strerror(errno));
-                    }
-                    i++;
-                    currentElement = nextElement + 1;
-                } while (nextElement != arrayEnd);
-
-                if (i != arraySize) {
-                    long *tmp = realloc(arr, i * sizeof(long));
-                    if (!tmp) {
-                        fprintf(stderr, "Error while reallocating memory for long array: %s\n", strerror(errno));
-                        free(arr);
-                        buffer = arrayEnd + 1;
-                        goto loopEndR;
-                    }
-                    arr = tmp;
-                }
-                optOut->v_a.a_l = arr;
-                optOut->v_a.len = i;
-                break;
-            }
-            case ARRAY_DOUBLE: {
-                char *arrayStart = strchr(assignIndex + 1, '[');
-                if (!arrayStart || arrayStart > endValueIndex) {
-                    fprintf(stderr,
-                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
-                            file, optName);
-                    break;
-                }
-                char *arrayEnd = strchr(arrayStart + 1, ']');
-                if (!arrayEnd) {
-                    fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
-                    break;
-                }
-
-                double *arr = malloc(sizeof(double) * ARRAY_ALLOCATION);
-                size_t i = 0;
-                size_t arraySize = ARRAY_ALLOCATION;
-                char *nextElement = arrayStart + 1;
-                char *currentElement = arrayStart + 1;
-                do {
-                    nextElement = strchr(nextElement + 1, ',');
-                    if (nextElement > arrayEnd || !nextElement) nextElement = arrayEnd;
-                    char *valueStart;
-                    trimnp(currentElement, nextElement, &valueStart);
-                    if (arraySize - 2 == i) {
-                        double *tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(double));
-                        if (!tmp) {
-                            fprintf(stderr, "Error while reallocating memory for double array: %s\n", strerror(errno));
-                            free(arr);
-                            buffer = arrayEnd + 1;
-                            goto loopEndR;
-                        }
-                        arr = tmp;
-                    }
-                    char *endPtr = NULL;
-                    arr[i] = strtod(valueStart, &endPtr);
-                    if (endPtr == valueStart) {
-                        //error
-                        fprintf(stderr, "Error at option %s:%s[%zu]: Invalid double: %s\n", file, optName, i,
-                                strerror(errno));
-                    }
-                    i++;
-                    currentElement = nextElement + 1;
-                } while (nextElement != arrayEnd);
-
-                if (i != arraySize) {
-                    double *tmp = realloc(arr, i * sizeof(double));
-                    if (!tmp) {
-                        fprintf(stderr, "Error while reallocating memory for double array: %s\n", strerror(errno));
-                        free(arr);
-                        buffer = arrayEnd + 1;
-                        goto loopEndR;
-                    }
-                    arr = tmp;
-                }
-                optOut->v_a.a_d = arr;
-                optOut->v_a.len = i;
-                break;
-            }
-            case ARRAY_TEXT: {
-                char *arrayStart = strchr(assignIndex + 1, '[');
-                if (!arrayStart || arrayStart > endValueIndex) {
-                    fprintf(stderr,
-                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
-                            file, optName);
-                    break;
-                }
-
-                char **arr = malloc(sizeof(char *) * ARRAY_ALLOCATION);
-                size_t i = 0;
-                size_t arraySize = ARRAY_ALLOCATION;
-                char *nextElement = arrayStart + 1;
-                char *currentElement = arrayStart + 1;
-                do {
-                    if (arraySize - 2 == i) {
-                        char **tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(char *));
-                        if (!tmp) {
-                            fprintf(stderr, "Error while reallocating memory for string array: %s\n", strerror(errno));
-                            free(arr);
-                            goto loopEnd;
-                        }
-                        arr = tmp;
-                    }
-
-                    //STRING PARSING START
-
-                    char *doubleStart = strchr(currentElement, '"');
-                    char *singleStart = strchr(currentElement, '\'');
-                    char *possibleArrayEnd = strchr(currentElement, ']');
-                    if (!possibleArrayEnd) {
-                        fprintf(stderr, "Error at option %s:%s: Array must end with ]\n", file, optName);
-                        free(arr);
-                        goto loopEnd;
-                    }
-                    if ((!doubleStart || possibleArrayEnd < doubleStart) &&
-                        (!singleStart || possibleArrayEnd < singleStart)) {
-                        break;
-                    }
-                    bool single = (singleStart < doubleStart && singleStart) || (singleStart && !doubleStart);
-                    if ((!single && !doubleStart)) {
-                        fprintf(stderr,
-                                "Error at option %s:%s[%zu]: String must start with ' or \"\n",
-                                file, optName, i);
-                        break;
-                    }
-                    char searchChar = single ? '\'' : '"';
-                    char *stringStart = single ? singleStart : doubleStart;
-                    stringStart += 1 + (*(stringStart + 1) == '\n');
-
-                    char *multiLineEnd = strchr(stringStart, searchChar);
-                    if (!multiLineEnd) {
-                        fprintf(stderr, "Error at option %s:%s: String must end with ' or \"\n", file, optName);
-                        break;
-                    }
-
-                    nextElement = strchr(multiLineEnd, ',');
-                    if (*(multiLineEnd - 1) == '\n') multiLineEnd--;
-
-                    arr[i] = strndup(stringStart, multiLineEnd - stringStart);
-
-                    if (!nextElement)break;
-
-                    i++;
-                    currentElement = nextElement + 1;
-                } while (true);
-
-                if (i != arraySize) {
-                    char **tmp = realloc(arr, i * sizeof(char *));
-                    if (!tmp) {
-                        fprintf(stderr, "Error while reallocating memory for string array: %s\n", strerror(errno));
-                        free(arr);
-                        buffer = currentElement;
-                        goto loopEndR;
-                    }
-                    arr = tmp;
-                }
-                optOut->v_a.a_s = arr;
-                optOut->v_a.len = i;
-                break;
-            }
-            case ARRAY_COMPOUND: {
-                char *arrayStart = strchr(assignIndex + 1, '[');
-                if (!arrayStart || arrayStart > endValueIndex) {
-                    fprintf(stderr,
-                            "Error at option %s:%s: Array must start on the same line as the option definition with [\n",
-                            file, optName);
-                    break;
-                }
-
-                Option ***arr = malloc(sizeof(Option **) * ARRAY_ALLOCATION);
-                size_t i = 0;
-                size_t arraySize = ARRAY_ALLOCATION;
-                char *nextElement = arrayStart + 1;
-                char *currentElement = arrayStart + 1;
-                do {
-                    if (arraySize - 2 == i) {
-                        Option ***tmp = realloc(arr, (arraySize + ARRAY_ALLOCATION) * sizeof(Option **));
-                        if (!tmp) {
-                            fprintf(stderr, "Error while reallocating memory for compound array: %s\n",
-                                    strerror(errno));
-                            free(arr);
-                            goto loopEnd;
-                        }
-                        arr = tmp;
-                    }
-
-                    char *compoundStart = strchr(currentElement, '{');
-                    char *potentialArrayEnd = strchr(currentElement, ']');
-                    if (!compoundStart || compoundStart > potentialArrayEnd) {
-                        break;
-                    }
-                    int openCount = 1;
-                    char *compoundEnd = NULL;
-                    for (char *j = compoundStart + 1; j < compoundStart + length; ++j) {
-                        if (*j == '{') openCount++;
-                        if (*j == '}') openCount--;
-                        if (!openCount) {
-                            compoundEnd = j;
-                            break;
-                        }
-                    }
-                    if (openCount) {
-                        fprintf(stderr, "Error at option %s:%s: Compound must end with '}'\n", file, optName);
-                        free(arr);
-                        goto loopEnd;
-                    }
-
-                    arr[i] = malloc(sizeof(Option *) * OPTION_HASHMAP_SIZE);
-                    /*
-                      Copies all options from the template to each element of the array. It's quite ugly
-                      but seems to work. It should probably be checked over.
-                      It's ugly but better than looping over the entire hashmap using HASH_ITER, then copying
-                      every option, and re-adding it using HASH_ADD. This way the next element in the hashmap
-                      linked list bucket can also be efficiently copied at the same time.
-                     */
-                    for (Option **tmp = optOut->v_a.a_v.a_v_t; tmp - (optOut->v_a.a_v.a_v_t) <
-                                                               OPTION_HASHMAP_SIZE; ++tmp) {
-                        Option *o1 = *tmp;
-                        if (!o1) continue;
-                        Option *o1n = malloc(sizeof(*o1));
-                        memcpy(o1n, o1, sizeof(*o1));
-                        arr[i][tmp - optOut->v_a.a_v.a_v_t] = o1n;
-
-                        Option *opt1p = o1n;
-                        for (Option *opt1 = o1n->next; opt1; opt1 = opt1->next) {
-                            Option *o1nnext = malloc(sizeof(*opt1));
-                            memcpy(o1nnext, opt1, sizeof(*opt1));
-                            opt1p->next = o1nnext;
-                            opt1p = opt1;
-                        }
-                    }
-                    parseConfigWhole(arr[i], file, compoundStart + 1, compoundEnd - compoundStart + 1);
-
-                    nextElement = compoundEnd;
-                    i++;
-                    currentElement = nextElement + 1;
-                } while (true);
-
-                if (i != arraySize) {
-                    Option ***tmp = realloc(arr, i * sizeof(Option **));
-                    if (!tmp) {
-                        fprintf(stderr, "Error while reallocating memory for compound array: %s\n", strerror(errno));
-                        free(arr);
-                        lineEnd = currentElement;
-                        break;
-                    }
-                    arr = tmp;
-                }
-                optOut->v_a.a_v.a_v = arr;
-                optOut->v_a.len = i;
-                lineEnd = currentElement;
+            case ARRAY: {
+                char *arrayEnd = parseArray(&(optOut->v_a), file, optName, assignIndex, bufferOriginal + length);
+                if (!arrayEnd)break;
+                lineEnd = arrayEnd;
                 break;
             }
         }

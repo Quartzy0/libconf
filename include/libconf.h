@@ -71,15 +71,10 @@ enum Type {
     DOUBLE,
     TEXT,
     COMPOUND,
-    ARRAY_BOOL,
-    ARRAY_LONG,
-    ARRAY_DOUBLE,
-    ARRAY_TEXT,
-    ARRAY_COMPOUND,
-    ARRAY_ARRAY
+    ARRAY
 };
 
-struct ArrayOptionValue {
+typedef struct ArrayOption {
     union {
         long *a_l;
         double *a_d;
@@ -89,10 +84,14 @@ struct ArrayOptionValue {
             struct Option ***a_v; //Array of hash-tables (hash-table is ** and array is *)
             struct Option **a_v_t; //"Template" that all elements in the array will follow
         } a_v;
-        struct ArrayOptionValue *a_a;
+        struct {
+            struct ArrayOption *a_a;
+            struct ArrayOption *t;
+        } a_a;
     };
     size_t len;
-};
+    enum Type type;
+} ArrayOption;
 
 typedef struct Option {
     char *name; //Key
@@ -102,7 +101,7 @@ typedef struct Option {
         bool v_b;
         char *v_s;
         struct Option **v_v;
-        struct ArrayOptionValue v_a;
+        struct ArrayOption v_a;
     };
     enum Type type;
     union {
@@ -111,7 +110,7 @@ typedef struct Option {
         bool dv_b;
         char *dv_s;
         struct Option **dv_v;
-        struct ArrayOptionValue dv_a;
+        struct ArrayOption dv_a;
     };
     struct Option *next; //Used as a linked list in hash map
 } Option;
@@ -139,6 +138,7 @@ void cleanOptions(Option **options);
                     double*: (o)->v_a.a_d,                      \
                     char**: (o)->v_a.a_s,                       \
                     Option***: (o)->v_a.a_v.a_v,                \
+                    ArrayOption*: (o)->v_a.a_a.a_a,             \
                     default: (o)->v_v);                         \
 }while(0)
 
@@ -191,9 +191,10 @@ void cleanOptions(Option **options);
 #define ADD_OPT_ARRAY_LONG(conf, name_in, default_v) do{        \
     struct Option *opt = malloc(sizeof(Option));                \
     opt->name = name_in;                                        \
-    opt->type = ARRAY_LONG;                                     \
+    opt->type = ARRAY;                                          \
     opt->dv_a.a_l = default_v;                                  \
     opt->dv_a.len = sizeof(default_v) / sizeof((default_v)[0]); \
+    opt->dv_a.type = LONG;                                      \
     opt->v_a = opt->dv_a;                                       \
     HASH_ADD(conf, opt);                                        \
 }while(0)
@@ -201,9 +202,10 @@ void cleanOptions(Option **options);
 #define ADD_OPT_ARRAY_DOUBLE(conf, name_in, default_v) do{      \
     struct Option *opt = malloc(sizeof(Option));                \
     opt->name = name_in;                                        \
-    opt->type = ARRAY_DOUBLE;                                   \
+    opt->type = ARRAY;                                          \
     opt->dv_a.a_d = default_v;                                  \
     opt->dv_a.len = sizeof(default_v) / sizeof((default_v)[0]); \
+    opt->dv_a.type = DOUBLE;                                    \
     opt->v_a = opt->dv_a;                                       \
     HASH_ADD(conf, opt);                                        \
 }while(0)
@@ -211,9 +213,10 @@ void cleanOptions(Option **options);
 #define ADD_OPT_ARRAY_BOOL(conf, name_in, default_v) do{        \
     struct Option *opt = malloc(sizeof(Option));                \
     opt->name = name_in;                                        \
-    opt->type = ARRAY_BOOL;                                     \
+    opt->type = ARRAY;                                          \
     opt->dv_a.a_b = default_v;                                  \
     opt->dv_a.len = sizeof(default_v) / sizeof((default_v)[0]); \
+    opt->dv_a.type = BOOL;                                      \
     opt->v_a = opt->dv_a;                                       \
     HASH_ADD(conf, opt);                                        \
 }while(0)
@@ -221,9 +224,10 @@ void cleanOptions(Option **options);
 #define ADD_OPT_ARRAY_STR(conf, name_in, default_v, len_in) do{ \
     struct Option *opt = malloc(sizeof(Option));                \
     opt->name = name_in;                                        \
-    opt->type = ARRAY_TEXT;                                     \
+    opt->type = ARRAY;                                          \
     opt->dv_a.a_s = default_v;                                  \
     opt->dv_a.len = len_in;                                     \
+    opt->dv_a.type = TEXT;                                      \
     opt->v_a = opt->dv_a;                                       \
     HASH_ADD(conf, opt);                                        \
 }while(0)
@@ -231,13 +235,27 @@ void cleanOptions(Option **options);
 #define ADD_OPT_ARRAY_COMPOUND(conf, name_in, template_v, default_v) do{\
     struct Option *opt = malloc(sizeof(Option));                \
     opt->name = name_in;                                        \
-    opt->type = ARRAY_COMPOUND;                                 \
+    opt->type = ARRAY;                                          \
     opt->dv_a.a_v.a_v = default_v;                              \
     opt->dv_a.a_v.a_v_t = template_v;                           \
     opt->dv_a.len = sizeof(default_v) / sizeof((default_v)[0]); \
+    opt->dv_a.type = COMPOUND;                                  \
     opt->v_a = opt->dv_a;                                       \
     HASH_ADD(conf, opt);                                        \
 }while(0)
+
+#define ADD_OPT_ARRAY_ARRAY(conf, name_in, template_v, default_v, len_i) do{\
+    struct Option *opt = malloc(sizeof(Option));                \
+    opt->name = name_in;                                        \
+    opt->type = ARRAY;                                          \
+    opt->v_a.a_a.t = template_v;                                \
+    opt->v_a.a_a.a_a = default_v;                               \
+    opt->v_a.len = len_i;                                       \
+    opt->v_a.type = ARRAY;                                      \
+    HASH_ADD(conf, opt);                                        \
+}while(0)
+
+#define ARR_LONG(val, leni) (ArrayOption) {.type=LONG, .a_l=(val), .len=(leni)}
 
 #define get(config, optName, out) do{                           \
     struct Option* o = get_(config, optName);                   \

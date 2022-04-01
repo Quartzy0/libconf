@@ -29,6 +29,16 @@ int main() {
     char *arrs_def[] = {"fakse", "yes", "falssse"};
     ADD_OPT_ARRAY_STR(config, "arrs", arrs_def, 3);
 
+    char *arrs1_def[] = {"aaaa", "bbbbbb", "cccccc"};
+    ADD_OPT_ARRAY_STR(config, "arrs1", arrs1_def, 3);
+
+    ArrayOption arrays[2];
+    long as[] = {7767,345,12};
+    arrays[0] = ARR_LONG(as, 3);
+    long ar[] = {444, 2222221, 211, 44, 334, 56, 33};
+    arrays[1] = ARR_LONG(ar, 7);
+    ADD_OPT_ARRAY_ARRAY(config, "arra", arrays, arrays, 2);
+
     Option **arr_opt_templ;
     INIT_CONFIG(arr_opt_templ);
     ADD_OPT_STR(arr_opt_templ, "ll", "lolllll");
@@ -59,6 +69,14 @@ int main() {
 
     for (int i = 0; i < str_arr_len; ++i) {
         printf("arrs[%d]=%s\n", i, str_arr[i]);
+    }
+
+    char **str1_arr;
+    size_t str1_arr_len = 0;
+    get_array(config, "arrs1", &str1_arr, str1_arr_len);
+
+    for (int i = 0; i < str1_arr_len; ++i) {
+        printf("arrs1[%d]=%s\n", i, str1_arr[i]);
     }
 
     Option ***opts_arr;
@@ -93,6 +111,17 @@ int main() {
         int breh = 0;
         get(opts_arr[i], "breh", &breh);
         printf("arrc[%d].breh is: %d\n", i, breh);
+    }
+
+    ArrayOption *arra = NULL;
+    size_t arra_count = 0;
+    get_array(config, "arra", &arra, arra_count);
+    printf("arra count: %zu\n", arra_count);
+    for (int i = 0; i < arra_count; ++i){
+        printf("arra[%d] count: %zu\n", i, arra[i].len);
+        for (int j = 0; j < arra[i].len; ++j){
+            printf("arra[%d][%d]: %ld\n", i, j, arra[i].a_l[j]);
+        }
     }
 
     TIMER_END(get);
